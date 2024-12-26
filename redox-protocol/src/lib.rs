@@ -13,8 +13,10 @@ pub enum Command {
 /// 定义服务器的响应类型
 #[derive(Debug)]
 pub enum Response {
-    /// 成功响应：Option<String> 表示可能包含的值（GET 命令的结果）
-    Ok(Option<String>),
+    /// SET 命令成功响应
+    Ok,
+    /// GET 命令成功响应，包含值
+    Value(String),
     /// 错误响应：包含错误信息
     Error(String),
 }
@@ -71,10 +73,10 @@ impl Protocol {
     /// 将响应编码为字符串格式
     pub fn encode_response(resp: &Response) -> String {
         match resp {
+            // SET 命令成功返回 OK
+            Response::Ok => "OK\n".to_string(),
             // GET 命令成功，有值时直接返回值
-            Response::Ok(Some(value)) => format!("{}\n", value),
-            // GET 命令成功，无值时返回 NIL
-            Response::Ok(None) => "NIL\n".to_string(),
+            Response::Value(value) => format!("{}\n", value),
             // 错误响应
             Response::Error(err) => format!("ERR {}\n", err),
         }
