@@ -1,0 +1,9 @@
+[package]
+name = "redox-cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1.36", features = ["full"] }
+bytes = "1.5"
+redox-protocol = { path = "../redox-protocol" } 
