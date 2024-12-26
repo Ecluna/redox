@@ -3,47 +3,24 @@ mod storage;
 
 use network::Server;
 use storage::Storage;
-use std::env;
+use clap::Parser;
 
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
 struct ServerConfig {
+    /// Port to listen on (default: 2001)
+    #[arg(short, long, default_value_t = 2001)]
     port: u16,
+
+    /// Password for authentication
+    #[arg(short, long)]
     password: Option<String>,
-}
-
-impl ServerConfig {
-    fn from_args() -> Self {
-        let args: Vec<String> = env::args().collect();
-        let mut config = ServerConfig {
-            port: 2001,  // 默认端口
-            password: None,
-        };
-
-        let mut i = 1;
-        while i < args.len() {
-            match args[i].as_str() {
-                // 处理端口参数
-                port if port.parse::<u16>().is_ok() => {
-                    config.port = port.parse().unwrap();
-                }
-                // 处理密码参数
-                arg if arg.starts_with("--password=") => {
-                    config.password = Some(arg[11..].to_string());
-                }
-                _ => {
-                    eprintln!("Warning: Unknown argument '{}' ignored", args[i]);
-                }
-            }
-            i += 1;
-        }
-
-        config
-    }
 }
 
 /// 服务器入口函数
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let config = ServerConfig::from_args();
+    let config = ServerConfig::parse();
 
     println!("Redox server starting...");
     if config.password.is_some() {
