@@ -5,45 +5,55 @@ use network::Server;
 use storage::Storage;
 use std::env;
 
+struct ServerConfig {
+    port: u16,
+    password: Option<String>,
+}
+
+impl ServerConfig {
+    fn from_args() -> Self {
+        let args: Vec<String> = env::args().collect();
+        let mut config = ServerConfig {
+            port: 2001,  // 默认端口
+            password: None,
+        };
+
+        let mut i = 1;
+        while i < args.len() {
+            match args[i].as_str() {
+                // 处理端口参数
+                port if port.parse::<u16>().is_ok() => {
+                    config.port = port.parse().unwrap();
+                }
+                // 处理密码参数
+                arg if arg.starts_with("--password=") => {
+                    config.password = Some(arg[11..].to_string());
+                }
+                _ => {
+                    eprintln!("Warning: Unknown argument '{}' ignored", args[i]);
+                }
+            }
+            i += 1;
+        }
+
+        config
+    }
+}
+
 /// 服务器入口函数
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let args: Vec<String> = env::args().collect();
-    
-    // 解析命令行参数
-    let (port, password) = match args.len() {
-        1 => (2001, None), // 无参数：默认端口，无密码
-        2 => {
-            // 一个参数：可能是端口或密码
-            if args[1].starts_with("--password=") {
-                (2001, Some(args[1][11..].to_string()))
-            } else {
-                (args[1].parse::<u16>().unwrap_or(2001), None)
-            }
-        }
-        3 => {
-            // 两个参数：端口和密码
-            if args[2].starts_with("--password=") {
-                (
-                    args[1].parse::<u16>().unwrap_or(2001),
-                    Some(args[2][11..].to_string()),
-                )
-            } else {
-                (2001, None)
-            }
-        }
-        _ => (2001, None),
-    };
+    let config = ServerConfig::from_args();
 
     println!("Redox server starting...");
-    if password.is_some() {
+    if config.password.is_some() {
         println!("Password authentication enabled");
     }
     
     let storage = Storage::new();
-    let server = Server::new(storage, password);
+    let server = Server::new(storage, config.password);
     
-    let mut current_port = port;
+    let mut current_port = config.port;
     loop {
         let addr = format!("127.0.0.1:{}", current_port);
         match server.try_bind(&addr).await {
