@@ -2,6 +2,15 @@
 name = "redox"
 version = "0.1.0"
 edition = "2021"
+default-run = "redox"
+
+[[bin]]
+name = "redox"
+path = "src/main.rs"
+
+[[bin]]
+name = "redox-cli"
+path = "src/bin/redox-cli.rs"
 
 [dependencies]
 tokio = { version = "1.36", features = ["full"] }
