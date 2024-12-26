@@ -8,18 +8,41 @@ use std::env;
 /// 服务器入口函数
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // 从命令行参数获取端口，如果没有则使用默认端口
-    let port = env::args()
-        .nth(1)
-        .and_then(|p| p.parse::<u16>().ok())
-        .unwrap_or(2001);
+    let args: Vec<String> = env::args().collect();
+    
+    // 解析命令行参数
+    let (port, password) = match args.len() {
+        1 => (2001, None), // 无参数：默认端口，无密码
+        2 => {
+            // 一个参数：可能是端口或密码
+            if args[1].starts_with("--password=") {
+                (2001, Some(args[1][11..].to_string()))
+            } else {
+                (args[1].parse::<u16>().unwrap_or(2001), None)
+            }
+        }
+        3 => {
+            // 两个参数：端口和密码
+            if args[2].starts_with("--password=") {
+                (
+                    args[1].parse::<u16>().unwrap_or(2001),
+                    Some(args[2][11..].to_string()),
+                )
+            } else {
+                (2001, None)
+            }
+        }
+        _ => (2001, None),
+    };
 
     println!("Redox server starting...");
+    if password.is_some() {
+        println!("Password authentication enabled");
+    }
     
     let storage = Storage::new();
-    let server = Server::new(storage);
+    let server = Server::new(storage, password);
     
-    // 尝试绑定端口，如果被占用则尝试下一个端口
     let mut current_port = port;
     loop {
         let addr = format!("127.0.0.1:{}", current_port);

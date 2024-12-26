@@ -4,6 +4,8 @@ use std::io;
 /// 定义客户端可以发送的命令类型
 #[derive(Debug)]
 pub enum Command {
+    /// AUTH 命令：验证密码
+    Auth { password: String },
     /// SET 命令：设置键值对
     Set { key: String, value: String },
     /// GET 命令：获取指定键的值
@@ -28,25 +30,28 @@ impl Protocol {
     /// 将命令编码为字符串格式
     pub fn encode_command(cmd: &Command) -> String {
         match cmd {
-            // SET 命令格式：SET key value\n
+            Command::Auth { password } => format!("AUTH {}\n", password),
             Command::Set { key, value } => format!("SET {} {}\n", key, value),
-            // GET 命令格式：GET key\n
             Command::Get { key } => format!("GET {}\n", key),
         }
     }
 
     /// 将输入字符串解析为命令
     pub fn decode_command(input: &str) -> Result<Command, String> {
-        // 去除输入两端的空白字符
         let input = input.trim();
-        // 按空白字符分割命令
         let parts: Vec<&str> = input.split_whitespace().collect();
         
-        // 解析命令类型和参数
         match parts.get(0).map(|s| *s) {
             Some(cmd) => match cmd.to_uppercase().as_str() {
+                "AUTH" => {
+                    if parts.len() != 2 {
+                        return Err("AUTH command requires password".to_string());
+                    }
+                    Ok(Command::Auth {
+                        password: parts[1].to_string(),
+                    })
+                }
                 "SET" => {
-                    // SET 命令必须包含键和值两个参数
                     if parts.len() != 3 {
                         return Err("SET command requires KEY and VALUE".to_string());
                     }
@@ -56,7 +61,6 @@ impl Protocol {
                     })
                 }
                 "GET" => {
-                    // GET 命令必须包含键参数
                     if parts.len() != 2 {
                         return Err("GET command requires KEY".to_string());
                     }
