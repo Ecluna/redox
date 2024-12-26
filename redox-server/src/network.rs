@@ -2,6 +2,7 @@ use crate::storage::Storage;
 use redox_protocol::{Command, Protocol, Response};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
+use std::io;
 
 /// 服务器结构体，持有存储实例
 pub struct Server {
@@ -12,6 +13,12 @@ impl Server {
     /// 创建新的服务器实例
     pub fn new(storage: Storage) -> Self {
         Server { storage }
+    }
+
+    /// 尝试绑定地址，返回是否成功
+    pub async fn try_bind(&self, addr: &str) -> io::Result<()> {
+        TcpListener::bind(addr).await?;
+        Ok(())
     }
 
     /// 运行服务器，监听指定地址
