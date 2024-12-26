@@ -4,3 +4,4 @@ members = [
     "redox-cli",
     "redox-protocol"
 ]
+resolver = "2"
