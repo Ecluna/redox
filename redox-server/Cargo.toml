@@ -3,6 +3,10 @@ name = "redox-server"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "redoxd"
+path = "src/main.rs"
+
 [dependencies]
 tokio = { version = "1.36", features = ["full"] }
 bytes = "1.5"
