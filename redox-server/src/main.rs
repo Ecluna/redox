@@ -9,11 +9,11 @@ use clap::Parser;
 #[command(author, version, about, long_about = None)]
 struct ServerConfig {
     /// Port to listen on (default: 2001)
-    #[arg(short, long, default_value_t = 2001)]
+    #[arg(short = 'P', long, default_value_t = 2001)]
     port: u16,
 
     /// Password for authentication
-    #[arg(short, long)]
+    #[arg(short = 'p', long)]
     password: Option<String>,
 }
 
