@@ -24,23 +24,38 @@ impl Protocol {
     }
 
     pub fn decode_command(input: &str) -> Result<Command, String> {
-        let parts: Vec<&str> = input.trim().split_whitespace().collect();
-        match parts.as_slice() {
-            ["SET", key, value] => Ok(Command::Set {
-                key: key.to_string(),
-                value: value.to_string(),
-            }),
-            ["GET", key] => Ok(Command::Get {
-                key: key.to_string(),
-            }),
-            _ => Err("Invalid command format".to_string()),
+        let input = input.trim();
+        let parts: Vec<&str> = input.split_whitespace().collect();
+        
+        match parts.get(0).map(|s| *s) {
+            Some(cmd) => match cmd.to_uppercase().as_str() {
+                "SET" => {
+                    if parts.len() != 3 {
+                        return Err("SET command requires KEY and VALUE".to_string());
+                    }
+                    Ok(Command::Set {
+                        key: parts[1].to_string(),
+                        value: parts[2].to_string(),
+                    })
+                }
+                "GET" => {
+                    if parts.len() != 2 {
+                        return Err("GET command requires KEY".to_string());
+                    }
+                    Ok(Command::Get {
+                        key: parts[1].to_string(),
+                    })
+                }
+                _ => Err("Unknown command".to_string()),
+            },
+            None => Err("Empty command".to_string()),
         }
     }
 
     pub fn encode_response(resp: &Response) -> String {
         match resp {
             Response::Ok(Some(value)) => format!("OK {}\n", value),
-            Response::Ok(None) => "NIL\n".to_string(),
+            Response::Ok(None) => "OK\n".to_string(),
             Response::Error(err) => format!("ERR {}\n", err),
         }
     }
