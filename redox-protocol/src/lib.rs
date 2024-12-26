@@ -1,6 +1,3 @@
-use bytes::{Buf, BufMut, BytesMut};
-use std::io;
-
 /// 定义客户端可以发送的命令类型
 #[derive(Debug)]
 pub enum Command {
@@ -79,7 +76,7 @@ impl Protocol {
         match resp {
             // SET 命令成功返回 OK
             Response::Ok => "OK\n".to_string(),
-            // GET 命令成功，有值时直接返回值
+            // GET 命令成���，有值时直接返回值
             Response::Value(value) => format!("{}\n", value),
             // 错误响应
             Response::Error(err) => format!("ERR {}\n", err),
