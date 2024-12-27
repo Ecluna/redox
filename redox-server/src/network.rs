@@ -95,7 +95,7 @@ async fn handle_connection(
     let mut line = String::new();
 
     // 初始化连接状态
-    let state = ConnectionState {  // 移除 mut
+    let mut state = ConnectionState {  // 添加 mut
         authenticated: password.is_none(),  // 如果没有设置密码，则默认已认证
     };
 
@@ -121,6 +121,7 @@ async fn handle_connection(
             Command::Auth { password: input_password } => {
                 if let Some(server_password) = &password {
                     if input_password == **server_password {
+                        state.authenticated = true;  // 更新认证状态
                         Response::Ok
                     } else {
                         Response::Error("Invalid password".to_string())
