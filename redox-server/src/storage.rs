@@ -118,7 +118,128 @@ impl Storage {
         }
     }
 
-    // ... 继续实现其他集合操作 ...
+    pub async fn srem(&self, key: &str, member: &str) -> bool {
+        let mut data = self.data.lock().await;
+        match data.get_mut(key) {
+            Some(RedoxValue::Set(set)) => set.remove(member),
+            _ => false,
+        }
+    }
+
+    pub async fn smembers(&self, key: &str) -> Option<Vec<String>> {
+        let data = self.data.lock().await;
+        match data.get(key) {
+            Some(RedoxValue::Set(set)) => Some(set.iter().cloned().collect()),
+            _ => None,
+        }
+    }
+
+    pub async fn sismember(&self, key: &str, member: &str) -> bool {
+        let data = self.data.lock().await;
+        match data.get(key) {
+            Some(RedoxValue::Set(set)) => set.contains(member),
+            _ => false,
+        }
+    }
+
+    // 哈希表操作
+    pub async fn hset(&self, key: String, field: String, value: String) -> bool {
+        let mut data = self.data.lock().await;
+        match data.get_mut(&key) {
+            Some(RedoxValue::Hash(hash)) => {
+                let is_new = !hash.contains_key(&field);
+                hash.insert(field, value);
+                is_new
+            }
+            None => {
+                let mut hash = HashMap::new();
+                hash.insert(field, value);
+                data.insert(key, RedoxValue::Hash(hash));
+                true
+            }
+            _ => false,
+        }
+    }
+
+    pub async fn hget(&self, key: &str, field: &str) -> Option<String> {
+        let data = self.data.lock().await;
+        match data.get(key) {
+            Some(RedoxValue::Hash(hash)) => hash.get(field).cloned(),
+            _ => None,
+        }
+    }
+
+    pub async fn hdel(&self, key: &str, field: &str) -> bool {
+        let mut data = self.data.lock().await;
+        match data.get_mut(key) {
+            Some(RedoxValue::Hash(hash)) => hash.remove(field).is_some(),
+            _ => false,
+        }
+    }
+
+    pub async fn hgetall(&self, key: &str) -> Option<HashMap<String, String>> {
+        let data = self.data.lock().await;
+        match data.get(key) {
+            Some(RedoxValue::Hash(hash)) => Some(hash.clone()),
+            _ => None,
+        }
+    }
+
+    // 有序集合操作
+    pub async fn zadd(&self, key: String, score: f64, member: String) -> bool {
+        let mut data = self.data.lock().await;
+        match data.get_mut(&key) {
+            Some(RedoxValue::SortedSet(zset)) => {
+                let is_new = !zset.contains_key(&member);
+                zset.insert(member, score);
+                is_new
+            }
+            None => {
+                let mut zset = BTreeMap::new();
+                zset.insert(member, score);
+                data.insert(key, RedoxValue::SortedSet(zset));
+                true
+            }
+            _ => false,
+        }
+    }
+
+    pub async fn zrem(&self, key: &str, member: &str) -> bool {
+        let mut data = self.data.lock().await;
+        match data.get_mut(key) {
+            Some(RedoxValue::SortedSet(zset)) => zset.remove(member).is_some(),
+            _ => false,
+        }
+    }
+
+    pub async fn zrange(&self, key: &str, start: i64, stop: i64) -> Option<Vec<(String, f64)>> {
+        let data = self.data.lock().await;
+        match data.get(key) {
+            Some(RedoxValue::SortedSet(zset)) => {
+                let len = zset.len() as i64;
+                let (start, stop) = normalize_range(start, stop, len);
+                Some(zset.iter()
+                    .skip(start)
+                    .take(stop - start + 1)
+                    .map(|(k, v)| (k.clone(), *v))
+                    .collect())
+            }
+            _ => None,
+        }
+    }
+
+    pub async fn zrangebyscore(&self, key: &str, min: f64, max: f64) -> Option<Vec<(String, f64)>> {
+        let data = self.data.lock().await;
+        match data.get(key) {
+            Some(RedoxValue::SortedSet(zset)) => {
+                Some(zset.iter()
+                    .filter(|(_, score)| **score >= min && **score <= max)
+                    .map(|(k, v)| (k.clone(), *v))
+                    .collect())
+            }
+            _ => None,
+        }
+    }
 }
 
 // 辅助函数：规范化范围索引
