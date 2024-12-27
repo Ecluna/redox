@@ -2,19 +2,43 @@ use std::collections::{HashMap, HashSet, BTreeMap};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use redox_protocol::RedoxValue;
+use crate::persistence::Persistence;
 
 /// 存储结构体，使用 Arc<Mutex> 实现线程安全的共享存储
 #[derive(Clone)]
 pub struct Storage {
     data: Arc<Mutex<HashMap<String, RedoxValue>>>,
+    persistence: Option<Persistence>,
 }
 
 impl Storage {
     /// 创建新的存储实例
-    pub fn new() -> Self {
-        Storage {
-            data: Arc::new(Mutex::new(HashMap::new())),
+    pub fn new(persistence: Option<Persistence>) -> Self {
+        let data = match &persistence {
+            Some(p) => match p.load() {
+                Ok(data) => data,
+                Err(e) => {
+                    eprintln!("Error loading data: {}", e);
+                    HashMap::new()
+                }
+            },
+            None => HashMap::new(),
+        };
+
+        let storage = Storage {
+            data: Arc::new(Mutex::new(data)),
+            persistence,
+        };
+
+        // 启动自动保存
+        if let Some(p) = storage.persistence.clone() {
+            let data = storage.data.clone();
+            tokio::spawn(async move {
+                p.start_auto_save(data).await;
+            });
         }
+
+        storage
     }
 
     // 字符串操作

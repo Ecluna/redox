@@ -4,6 +4,7 @@ mod storage;
 use network::Server;
 use storage::Storage;
 use clap::Parser;
+use std::time::Duration;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -15,6 +16,14 @@ struct ServerConfig {
     /// Password for authentication
     #[arg(short = 'p', long)]
     password: Option<String>,
+
+    /// Data file path for persistence
+    #[arg(short = 'f', long)]
+    data_file: Option<String>,
+
+    /// Auto-save interval in seconds
+    #[arg(short = 'i', long, default_value_t = 60)]
+    save_interval: u64,
 }
 
 /// 服务器入口函数
@@ -22,12 +31,14 @@ struct ServerConfig {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = ServerConfig::parse();
 
-    println!("Redox server starting...");
-    if config.password.is_some() {
-        println!("Password authentication enabled");
-    }
-    
-    let storage = Storage::new();
+    let persistence = config.data_file.map(|path| {
+        Persistence::new(
+            path,
+            Duration::from_secs(config.save_interval),
+        )
+    });
+
+    let storage = Storage::new(persistence);
     let server = Server::new(storage, config.password);
     
     let mut current_port = config.port;
