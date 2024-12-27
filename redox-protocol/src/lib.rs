@@ -295,7 +295,10 @@ impl Protocol {
             Response::Value(value) => match value {
                 RedoxValue::String(s) => format!("{}\n", s),
                 RedoxValue::List(list) => format!("{}\n", list.join(" ")),
-                RedoxValue::Set(set) => format!("{}\n", set.iter().collect::<Vec<_>>().join(" ")),
+                RedoxValue::Set(set) => format!("{}\n", set.iter()
+                    .map(|s| s.as_str())
+                    .collect::<Vec<_>>()
+                    .join(" ")),
                 RedoxValue::Hash(hash) => {
                     let pairs: Vec<String> = hash
                         .iter()
