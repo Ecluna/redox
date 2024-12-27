@@ -4,16 +4,27 @@ use tokio::sync::Mutex;
 use redox_protocol::RedoxValue;
 use crate::persistence::Persistence;
 
-/// 存储结构体，使用 Arc<Mutex> 实现线程安全的共享存储
+/// 存储结构体，提供线程安全的数据存储和访问
+/// 支持多种数据类型：字符串、列表、集合、哈希表和有序集合
 #[derive(Clone)]
 pub struct Storage {
+    /// 核心数据存储，使用 Arc<Mutex> 实现线程安全
+    /// HashMap 的键是字符串，值是 RedoxValue 枚举
     data: Arc<Mutex<HashMap<String, RedoxValue>>>,
+    /// 持久化管理器，可选
     persistence: Option<Persistence>,
 }
 
 impl Storage {
     /// 创建新的存储实例
+    /// 
+    /// # Arguments
+    /// * `persistence` - 可选的持久化管理器
+    /// 
+    /// # Returns
+    /// 新的存储实例，如果提供了持久化管理器，会自动加载已保存的数据
     pub fn new(persistence: Option<Persistence>) -> Self {
+        // 尝试从持久化存储加载数据
         let data = match &persistence {
             Some(p) => match p.load() {
                 Ok(data) => data,
@@ -30,7 +41,7 @@ impl Storage {
             persistence,
         };
 
-        // 启动自动保存
+        // 如果启用了持久化，启动自动保存任务
         if let Some(p) = storage.persistence.clone() {
             let data = storage.data.clone();
             tokio::spawn(async move {
@@ -42,11 +53,24 @@ impl Storage {
     }
 
     // 字符串操作
+    /// 设置字符串值
+    /// 
+    /// # Arguments
+    /// * `key` - 键
+    /// * `value` - 值
     pub async fn set_string(&self, key: String, value: String) {
         let mut data = self.data.lock().await;
         data.insert(key, RedoxValue::String(value));
     }
 
+    /// 获取字符串值
+    /// 
+    /// # Arguments
+    /// * `key` - 键
+    /// 
+    /// # Returns
+    /// * `Some(String)` - 找到的值
+    /// * `None` - 键不存在或类型不匹配
     pub async fn get_string(&self, key: &str) -> Option<String> {
         let data = self.data.lock().await;
         match data.get(key) {
@@ -56,6 +80,14 @@ impl Storage {
     }
 
     // 列表操作
+    /// 在列表左端插入元素
+    /// 
+    /// # Arguments
+    /// * `key` - 列表的键
+    /// * `value` - 要插入的值
+    /// 
+    /// # Returns
+    /// 操作后列表的长度
     pub async fn lpush(&self, key: String, value: String) -> usize {
         let mut data = self.data.lock().await;
         match data.get_mut(&key) {
@@ -69,10 +101,7 @@ impl Storage {
                 data.insert(key, RedoxValue::List(list));
                 1
             }
-            _ => {
-                // 如果键存在但类型不是列表，返回0
-                0
-            }
+            _ => 0  // 键存在但类型不是列表
         }
     }
 
@@ -128,6 +157,15 @@ impl Storage {
     }
 
     // 集合操作
+    /// 向集合添加成员
+    /// 
+    /// # Arguments
+    /// * `key` - 集合的键
+    /// * `member` - 要添加的成员
+    /// 
+    /// # Returns
+    /// * `true` - 添加成功（成员是新的）
+    /// * `false` - 添加失败（成员已存在或类型错误）
     pub async fn sadd(&self, key: String, member: String) -> bool {
         let mut data = self.data.lock().await;
         match data.get_mut(&key) {
@@ -138,7 +176,7 @@ impl Storage {
                 data.insert(key, RedoxValue::Set(set));
                 result
             }
-            _ => false,
+            _ => false
         }
     }
 
@@ -167,6 +205,16 @@ impl Storage {
     }
 
     // 哈希表操作
+    /// 设置哈希表字段的值
+    /// 
+    /// # Arguments
+    /// * `key` - 哈希表的键
+    /// * `field` - 字段名
+    /// * `value` - 字段值
+    /// 
+    /// # Returns
+    /// * `true` - 设置了新字段
+    /// * `false` - 更新了已存在的字段
     pub async fn hset(&self, key: String, field: String, value: String) -> bool {
         let mut data = self.data.lock().await;
         match data.get_mut(&key) {
@@ -181,7 +229,7 @@ impl Storage {
                 data.insert(key, RedoxValue::Hash(hash));
                 true
             }
-            _ => false,
+            _ => false
         }
     }
 
@@ -210,6 +258,16 @@ impl Storage {
     }
 
     // 有序集合操作
+    /// 向有序集合添加成员
+    /// 
+    /// # Arguments
+    /// * `key` - 有序集合的键
+    /// * `score` - 成员的分数
+    /// * `member` - 成员名
+    /// 
+    /// # Returns
+    /// * `true` - 添加了新成员
+    /// * `false` - 更新了已存在的成员
     pub async fn zadd(&self, key: String, score: f64, member: String) -> bool {
         let mut data = self.data.lock().await;
         match data.get_mut(&key) {
@@ -224,7 +282,7 @@ impl Storage {
                 data.insert(key, RedoxValue::SortedSet(zset));
                 true
             }
-            _ => false,
+            _ => false
         }
     }
 
@@ -266,7 +324,15 @@ impl Storage {
     }
 }
 
-// 辅助函数：规范化范围索引
+/// 规范化范围索引
+/// 
+/// # Arguments
+/// * `start` - 起始索引（可以是负数）
+/// * `stop` - 结束索引（可以是负数）
+/// * `len` - 列表总长度
+/// 
+/// # Returns
+/// (start, stop) 转换后的索引对，确保在有效范围内
 fn normalize_range(start: i64, stop: i64, len: i64) -> (usize, usize) {
     let start = if start < 0 { len + start } else { start };
     let stop = if stop < 0 { len + stop } else { stop };
