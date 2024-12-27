@@ -304,7 +304,7 @@ impl Storage {
         }
     }
 
-    // 有序集合操作
+    // 有序集���操作
     /// 向有序集合添加成员
     /// 
     /// # Arguments
@@ -354,6 +354,10 @@ impl Storage {
         match data.get(key) {
             Some(RedoxValue::SortedSet(zset)) => {
                 let len = zset.len() as i64;
+                if len == 0 {
+                    return Some(vec![]);
+                }
+                
                 let (start, stop) = normalize_range(start, stop, len);
                 Some(zset.iter()
                     .skip(start)
@@ -507,9 +511,14 @@ impl Storage {
 /// # Returns
 /// (start, stop) 转换后的索引对，确保在有效范围内
 fn normalize_range(start: i64, stop: i64, len: i64) -> (usize, usize) {
-    let start = if start < 0 { len + start } else { start };
-    let stop = if stop < 0 { len + stop } else { stop };
-    let start = start.max(0) as usize;
-    let stop = stop.min(len - 1) as usize;
-    (start, stop)
+    // 处理负数索引
+    let start = if start < 0 { (len + start).max(0) } else { start.min(len - 1) };
+    let stop = if stop < 0 { (len + stop).max(0) } else { stop.min(len - 1) };
+    
+    // 确保 start 不大于 stop
+    let start = start.min(stop);
+    let stop = stop.max(start);
+    
+    // 转换为 usize
+    (start as usize, stop as usize)
 }
