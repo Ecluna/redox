@@ -418,7 +418,7 @@ impl Protocol {
                     result.push(format!("{}: {}", key, value));
                 }
                 result.sort();  // 保证顺序一致
-                format!("{}\n", result.join("\n"))
+                result.join("\n") + "\n"  // 所有信息一次性返回
             },
         }
     }
