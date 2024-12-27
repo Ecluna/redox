@@ -304,7 +304,7 @@ impl Storage {
         }
     }
 
-    // 有序集���操作
+    // 有序集合操作
     /// 向有序集合添加成员
     /// 
     /// # Arguments
@@ -358,11 +358,16 @@ impl Storage {
                     return Some(vec![]);
                 }
                 
+                // 先按分数排序
+                let mut members: Vec<(String, f64)> = zset.iter()
+                    .map(|(k, v)| (k.clone(), *v))
+                    .collect();
+                members.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+                
                 let (start, stop) = normalize_range(start, stop, len);
-                Some(zset.iter()
+                Some(members.into_iter()
                     .skip(start)
                     .take(stop - start + 1)
-                    .map(|(k, v)| (k.clone(), *v))
                     .collect())
             }
             _ => None,
@@ -373,9 +378,14 @@ impl Storage {
         let data = self.data.lock().await;
         match data.get(key) {
             Some(RedoxValue::SortedSet(zset)) => {
-                Some(zset.iter()
-                    .filter(|(_, score)| **score >= min && **score <= max)
+                // 先按分数排序
+                let mut members: Vec<(String, f64)> = zset.iter()
                     .map(|(k, v)| (k.clone(), *v))
+                    .collect();
+                members.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+                
+                Some(members.into_iter()
+                    .filter(|(_, score)| *score >= min && *score <= max)
                     .collect())
             }
             _ => None,
