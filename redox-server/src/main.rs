@@ -34,6 +34,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = ServerConfig::parse();
 
     let persistence = config.data_file.map(|path| {
+        println!("Using data file: {}", path);
         Persistence::new(
             path,
             Duration::from_secs(config.save_interval),
