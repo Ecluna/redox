@@ -27,13 +27,19 @@ impl Storage {
     pub fn new(persistence: Option<Persistence>) -> Self {
         // 尝试从持久化存储加载数据
         let data = match &persistence {
-            Some(p) => match p.load() {
-                Ok(data) => data,
-                Err(e) => {
-                    eprintln!("Error loading data: {}", e);
-                    HashMap::new()
-                }
-            },
+            Some(p) => {
+                tokio::task::block_in_place(|| {
+                    tokio::runtime::Handle::current().block_on(async {
+                        match p.load().await {
+                            Ok(data) => data,
+                            Err(e) => {
+                                eprintln!("Error loading data: {}", e);
+                                HashMap::new()
+                            }
+                        }
+                    })
+                })
+            }
             None => HashMap::new(),
         };
 

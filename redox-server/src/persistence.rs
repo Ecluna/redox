@@ -1,16 +1,14 @@
 use std::collections::HashMap;
-use std::fs::{self, File};
-use std::io::{self, BufReader, BufWriter};
 use std::path::Path;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::time;
 use tokio::sync::Mutex;
 use redox_protocol::RedoxValue;
 use serde::{Serialize, Deserialize};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use tokio::fs::File;
-use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
+use tokio::fs::File as TokioFile;
+use tokio::io::{self as tokio_io, AsyncReadExt, AsyncWriteExt, BufReader as TokioBufReader, BufWriter as TokioBufWriter};
 
 /// 持久化数据的序列化结构
 /// 使用 serde 进行 JSON 序列化和反序列化
@@ -58,18 +56,18 @@ impl Persistence {
         }
     }
 
-    /// 从文件��载数据
+    /// 从文件载数据
     /// 
     /// # Returns
     /// * `Ok(HashMap)` - 成功加载的数据
     /// * `Err` - 加载过程中的错误
-    pub async fn load(&self) -> io::Result<HashMap<String, RedoxValue>> {
+    pub async fn load(&self) -> tokio_io::Result<HashMap<String, RedoxValue>> {
         if !Path::new(&self.file_path).exists() {
             eprintln!("Data file not found: {}", self.file_path);
             return Ok(HashMap::new());
         }
 
-        let file = match File::open(&self.file_path).await {
+        let file = match TokioFile::open(&self.file_path).await {
             Ok(f) => f,
             Err(e) => {
                 eprintln!("Error opening data file: {}", e);
@@ -77,9 +75,8 @@ impl Persistence {
             }
         };
         
-        // 读取整个文件内容
         let mut content = String::new();
-        let mut reader = BufReader::new(file);
+        let mut reader = TokioBufReader::new(file);
         reader.read_to_string(&mut content).await?;
 
         // 尝试以新格式读取
@@ -99,7 +96,7 @@ impl Persistence {
                     }
                     Err(e) => {
                         eprintln!("Error deserializing data: {}", e);
-                        Err(io::Error::new(io::ErrorKind::InvalidData, e))
+                        Err(tokio_io::Error::new(tokio_io::ErrorKind::InvalidData, e))
                     }
                 }
             }
@@ -114,24 +111,21 @@ impl Persistence {
     /// # Returns
     /// * `Ok(())` - 保存成功
     /// * `Err` - 保存过程中的错误
-    pub async fn save(&self, data: &HashMap<String, RedoxValue>) -> io::Result<()> {
+    pub async fn save(&self, data: &HashMap<String, RedoxValue>) -> tokio_io::Result<()> {
         let expiry = self.expiry.lock().await;
         let persistent_data = PersistentData {
             data: data.clone(),
             expiry: expiry.clone(),
         };
 
-        // 创建临时文件
         let temp_path = format!("{}.temp", self.file_path);
-        let file = File::create(&temp_path).await?;
-        let mut writer = BufWriter::new(file);
+        let file = TokioFile::create(&temp_path).await?;
+        let mut writer = TokioBufWriter::new(file);
 
-        // 序列化数据
         let json = serde_json::to_string(&persistent_data)?;
         writer.write_all(json.as_bytes()).await?;
         writer.flush().await?;
 
-        // 原子性地替换文件
         tokio::fs::rename(temp_path, &self.file_path).await?;
         Ok(())
     }
