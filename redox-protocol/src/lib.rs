@@ -418,7 +418,7 @@ impl Protocol {
                     result.push(format!("{}: {}", key, value));
                 }
                 result.sort();  // 保证顺序一致
-                result.join("\n") + "\n"  // 所有信息一次性返回
+                format!("{}\n", result.join(" "))  // 用空格分隔，一行输出
             },
         }
     }
