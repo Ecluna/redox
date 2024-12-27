@@ -67,25 +67,6 @@ impl Server {
             });
         }
     }
-
-    async fn handle_command(&self, command: Command) -> Response {
-        match command {
-            // ... 现有命令处理 ...
-            Command::MSet(pairs) => {
-                let count = self.storage.mset(pairs).await;
-                Response::Integer(count)
-            }
-            Command::MGet(keys) => {
-                let values = self.storage.mget(&keys).await;
-                Response::Array(values)
-            }
-            Command::Info => {
-                let info = self.storage.info().await;
-                Response::Info(info)
-            }
-            // ... 其他命令处理 ...
-        }
-    }
 }
 
 /// 客户端连接的状态
@@ -125,7 +106,7 @@ async fn handle_connection(
     loop {
         line.clear();
         if reader.read_line(&mut line).await? == 0 {
-            break;  // 连���关闭
+            break;  // 连接关闭
         }
 
         // 解析命令
@@ -140,8 +121,8 @@ async fn handle_connection(
 
         // 处理命令并生成响应
         let response = match cmd {
-            Command::Auth { password: input_password } => {
-                handle_auth(&mut state, &password, &input_password)
+            Command::Auth { password: _ } => {
+                Response::Error("Authentication not handled here".to_string())
             }
             _ if !state.authenticated => {
                 Response::Error("Authentication required".to_string())
