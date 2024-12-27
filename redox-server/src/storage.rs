@@ -52,6 +52,13 @@ impl Storage {
         storage
     }
 
+    /// 标记数据已修改
+    fn mark_dirty(&self) {
+        if let Some(p) = &self.persistence {
+            p.dirty.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+
     // 字符串操作
     /// 设置字符串值
     /// 
@@ -61,6 +68,7 @@ impl Storage {
     pub async fn set_string(&self, key: String, value: String) {
         let mut data = self.data.lock().await;
         data.insert(key, RedoxValue::String(value));
+        self.mark_dirty();
     }
 
     /// 获取字符串值
@@ -90,7 +98,7 @@ impl Storage {
     /// 操作后列表的长度
     pub async fn lpush(&self, key: String, value: String) -> usize {
         let mut data = self.data.lock().await;
-        match data.get_mut(&key) {
+        let result = match data.get_mut(&key) {
             Some(RedoxValue::List(list)) => {
                 list.insert(0, value);
                 list.len()
@@ -101,13 +109,17 @@ impl Storage {
                 data.insert(key, RedoxValue::List(list));
                 1
             }
-            _ => 0  // 键存在但类型不是列表
+            _ => 0
+        };
+        if result > 0 {
+            self.mark_dirty();
         }
+        result
     }
 
     pub async fn rpush(&self, key: String, value: String) -> usize {
         let mut data = self.data.lock().await;
-        match data.get_mut(&key) {
+        let result = match data.get_mut(&key) {
             Some(RedoxValue::List(list)) => {
                 list.push(value);
                 list.len()
@@ -119,20 +131,28 @@ impl Storage {
                 1
             }
             _ => 0
+        };
+        if result > 0 {
+            self.mark_dirty();
         }
+        result
     }
 
     pub async fn lpop(&self, key: &str) -> Option<String> {
         let mut data = self.data.lock().await;
-        match data.get_mut(key) {
+        let result = match data.get_mut(key) {
             Some(RedoxValue::List(list)) => list.pop(),
             _ => None,
+        };
+        if result.is_some() {
+            self.mark_dirty();
         }
+        result
     }
 
     pub async fn rpop(&self, key: &str) -> Option<String> {
         let mut data = self.data.lock().await;
-        match data.get_mut(key) {
+        let result = match data.get_mut(key) {
             Some(RedoxValue::List(list)) => {
                 if list.is_empty() {
                     None
@@ -141,7 +161,11 @@ impl Storage {
                 }
             }
             _ => None,
+        };
+        if result.is_some() {
+            self.mark_dirty();
         }
+        result
     }
 
     pub async fn lrange(&self, key: &str, start: i64, stop: i64) -> Option<Vec<String>> {
@@ -168,7 +192,7 @@ impl Storage {
     /// * `false` - 添加失败（成员已存在或类型错误）
     pub async fn sadd(&self, key: String, member: String) -> bool {
         let mut data = self.data.lock().await;
-        match data.get_mut(&key) {
+        let result = match data.get_mut(&key) {
             Some(RedoxValue::Set(set)) => set.insert(member),
             None => {
                 let mut set = HashSet::new();
@@ -177,7 +201,11 @@ impl Storage {
                 result
             }
             _ => false
+        };
+        if result {
+            self.mark_dirty();
         }
+        result
     }
 
     pub async fn srem(&self, key: &str, member: &str) -> bool {
