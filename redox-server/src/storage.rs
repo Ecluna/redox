@@ -3,6 +3,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use redox_protocol::RedoxValue;
 use crate::persistence::Persistence;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// 存储结构体，提供线程安全的数据存储和访问
 /// 支持多种数据类型：字符串、列表、集合、哈希表和有序集合
@@ -210,10 +211,14 @@ impl Storage {
 
     pub async fn srem(&self, key: &str, member: &str) -> bool {
         let mut data = self.data.lock().await;
-        match data.get_mut(key) {
+        let result = match data.get_mut(key) {
             Some(RedoxValue::Set(set)) => set.remove(member),
             _ => false,
+        };
+        if result {
+            self.mark_dirty();
         }
+        result
     }
 
     pub async fn smembers(&self, key: &str) -> Option<Vec<String>> {
@@ -245,7 +250,7 @@ impl Storage {
     /// * `false` - 更新了已存在的字段
     pub async fn hset(&self, key: String, field: String, value: String) -> bool {
         let mut data = self.data.lock().await;
-        match data.get_mut(&key) {
+        let result = match data.get_mut(&key) {
             Some(RedoxValue::Hash(hash)) => {
                 let is_new = !hash.contains_key(&field);
                 hash.insert(field, value);
@@ -258,7 +263,11 @@ impl Storage {
                 true
             }
             _ => false
+        };
+        if result {
+            self.mark_dirty();
         }
+        result
     }
 
     pub async fn hget(&self, key: &str, field: &str) -> Option<String> {
@@ -271,10 +280,14 @@ impl Storage {
 
     pub async fn hdel(&self, key: &str, field: &str) -> bool {
         let mut data = self.data.lock().await;
-        match data.get_mut(key) {
+        let result = match data.get_mut(key) {
             Some(RedoxValue::Hash(hash)) => hash.remove(field).is_some(),
             _ => false,
+        };
+        if result {
+            self.mark_dirty();
         }
+        result
     }
 
     pub async fn hgetall(&self, key: &str) -> Option<HashMap<String, String>> {
@@ -298,7 +311,7 @@ impl Storage {
     /// * `false` - 更新了已存在的成员
     pub async fn zadd(&self, key: String, score: f64, member: String) -> bool {
         let mut data = self.data.lock().await;
-        match data.get_mut(&key) {
+        let result = match data.get_mut(&key) {
             Some(RedoxValue::SortedSet(zset)) => {
                 let is_new = !zset.contains_key(&member);
                 zset.insert(member, score);
@@ -311,15 +324,23 @@ impl Storage {
                 true
             }
             _ => false
+        };
+        if result {
+            self.mark_dirty();
         }
+        result
     }
 
     pub async fn zrem(&self, key: &str, member: &str) -> bool {
         let mut data = self.data.lock().await;
-        match data.get_mut(key) {
+        let result = match data.get_mut(key) {
             Some(RedoxValue::SortedSet(zset)) => zset.remove(member).is_some(),
             _ => false,
+        };
+        if result {
+            self.mark_dirty();
         }
+        result
     }
 
     pub async fn zrange(&self, key: &str, start: i64, stop: i64) -> Option<Vec<(String, f64)>> {
@@ -349,6 +370,119 @@ impl Storage {
             }
             _ => None,
         }
+    }
+
+    /// 批量设置字符串值
+    pub async fn mset(&self, pairs: Vec<(String, String)>) -> usize {
+        let mut data = self.data.lock().await;
+        let mut count = 0;
+        for (key, value) in pairs {
+            data.insert(key, RedoxValue::String(value));
+            count += 1;
+        }
+        if count > 0 {
+            self.mark_dirty();
+        }
+        count
+    }
+
+    /// 批量获取字符串值
+    pub async fn mget(&self, keys: &[String]) -> Vec<Option<String>> {
+        let data = self.data.lock().await;
+        keys.iter().map(|key| {
+            match data.get(key) {
+                Some(RedoxValue::String(s)) => Some(s.clone()),
+                _ => None,
+            }
+        }).collect()
+    }
+
+    /// 设置键的过期时间（秒）
+    pub async fn expire(&self, key: &str, seconds: u64) -> bool {
+        let mut data = self.data.lock().await;
+        if !data.contains_key(key) {
+            return false;
+        }
+        
+        let expires = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() + seconds;
+            
+        // 存储过期时间
+        if let Some(p) = &self.persistence {
+            p.set_expiry(key.to_string(), expires);
+            self.mark_dirty();
+        }
+        true
+    }
+
+    /// 检查键是否过期
+    async fn is_expired(&self, key: &str) -> bool {
+        if let Some(p) = &self.persistence {
+            if let Some(expires) = p.get_expiry(key) {
+                let now = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs();
+                return now >= expires;
+            }
+        }
+        false
+    }
+
+    /// 清理过期的键
+    pub async fn cleanup_expired(&self) {
+        let mut data = self.data.lock().await;
+        let mut expired_keys = Vec::new();
+        
+        // 收集过期的键
+        for key in data.keys() {
+            if self.is_expired(key).await {
+                expired_keys.push(key.clone());
+            }
+        }
+        
+        // 删除过期的键
+        if !expired_keys.is_empty() {
+            for key in expired_keys {
+                data.remove(&key);
+            }
+            self.mark_dirty();
+        }
+    }
+
+    /// 获取存储统计信息
+    pub async fn info(&self) -> HashMap<String, String> {
+        let data = self.data.lock().await;
+        let mut info = HashMap::new();
+        
+        info.insert("keys".to_string(), data.len().to_string());
+        
+        // 统计不同类型的键数量
+        let mut strings = 0;
+        let mut lists = 0;
+        let mut sets = 0;
+        let mut hashes = 0;
+        let mut zsets = 0;
+        
+        for value in data.values() {
+            match value {
+                RedoxValue::String(_) => strings += 1,
+                RedoxValue::List(_) => lists += 1,
+                RedoxValue::Set(_) => sets += 1,
+                RedoxValue::Hash(_) => hashes += 1,
+                RedoxValue::SortedSet(_) => zsets += 1,
+            }
+        }
+        
+        info.insert("strings".to_string(), strings.to_string());
+        info.insert("lists".to_string(), lists.to_string());
+        info.insert("sets".to_string(), sets.to_string());
+        info.insert("hashes".to_string(), hashes.to_string());
+        info.insert("zsets".to_string(), zsets.to_string());
+        
+        info
     }
 }
 
