@@ -254,6 +254,10 @@ async fn handle_connection(
                 let info = storage.info().await;
                 Response::Info(info)
             }
+            Command::Del(keys) => {
+                let count = storage.del(&keys).await;
+                Response::Integer(count)
+            }
         };
 
         // 发送响应
@@ -261,5 +265,11 @@ async fn handle_connection(
         writer.write_all(response_str.as_bytes()).await?;
     }
 
+    Ok(())
+}
+
+async fn write_response(socket: &mut TcpStream, response: &Response) -> io::Result<()> {
+    let response_str = Protocol::encode_response(response);
+    socket.write_all(response_str.as_bytes()).await?;
     Ok(())
 } 

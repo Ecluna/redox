@@ -304,7 +304,7 @@ impl Storage {
         }
     }
 
-    // 有序集合操作
+    // 有序集���操作
     /// 向有序集合添加成员
     /// 
     /// # Arguments
@@ -440,7 +440,7 @@ impl Storage {
             .unwrap()
             .as_secs() + seconds;
             
-        // 存储过期时间
+        // ���储过期时间
         if let Some(p) = &self.persistence {
             p.set_expiry(key.to_string(), expires).await;
             self.mark_dirty();
@@ -468,7 +468,7 @@ impl Storage {
         let mut data = self.data.lock().await;
         let mut expired_keys = Vec::new();
         
-        // 收集过期���键
+        // 收集过期键
         for key in data.keys() {
             if self.is_expired(key).await {
                 expired_keys.push(key.clone());
@@ -516,6 +516,25 @@ impl Storage {
         info.insert("zsets".to_string(), zsets.to_string());
         
         info
+    }
+
+    /// 删除一个或多个键
+    /// 返回实际删除的键的数量
+    pub async fn del(&self, keys: &[String]) -> usize {
+        let mut data = self.data.lock().await;
+        let mut count = 0;
+        
+        for key in keys {
+            if data.remove(key).is_some() {
+                count += 1;
+            }
+        }
+        
+        if count > 0 {
+            self.mark_dirty();
+        }
+        
+        count
     }
 }
 

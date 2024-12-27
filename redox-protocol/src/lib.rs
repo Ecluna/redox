@@ -75,6 +75,7 @@ pub enum Command {
     MSet(Vec<(String, String)>),  // 批量设置
     MGet(Vec<String>),           // 批量获取
     Info,                        // 获取信息
+    Del(Vec<String>),  // DEL 命令支持删除多个键
 }
 
 /// 响应类型
@@ -139,6 +140,7 @@ impl Protocol {
                 cmd
             },
             Command::Info => "INFO\n".to_string(),
+            Command::Del(keys) => format!("DEL {}\n", keys.join(" ")),
         }
     }
 
@@ -366,6 +368,12 @@ impl Protocol {
                     Ok(Command::MGet(parts[1..].iter().map(|s| s.to_string()).collect()))
                 }
                 "INFO" => Ok(Command::Info),
+                "DEL" => {
+                    if parts.len() < 2 {
+                        return Err("DEL command requires at least one KEY".to_string());
+                    }
+                    Ok(Command::Del(parts[1..].iter().map(|s| s.to_string()).collect()))
+                },
                 _ => Err(format!("Unknown command: {}", parts[0])),
             },
             None => Err("Empty command".to_string()),
