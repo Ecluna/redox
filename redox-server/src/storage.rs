@@ -56,7 +56,7 @@ impl Storage {
     /// 标记数据已修改
     fn mark_dirty(&self) {
         if let Some(p) = &self.persistence {
-            p.dirty.store(true, std::sync::atomic::Ordering::Relaxed);
+            p.mark_dirty();
         }
     }
 
@@ -459,7 +459,7 @@ impl Storage {
         
         info.insert("keys".to_string(), data.len().to_string());
         
-        // 统计不同类型的键数量
+        // 统计不同类��的键数量
         let mut strings = 0;
         let mut lists = 0;
         let mut sets = 0;
