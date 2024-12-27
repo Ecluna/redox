@@ -17,6 +17,7 @@ struct PersistentData {
 
 /// 持久化管理器
 /// 负责数据的加载、保存和自动保存
+#[derive(Clone)]
 pub struct Persistence {
     /// 数据文件的路径
     file_path: String,
