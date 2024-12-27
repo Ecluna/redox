@@ -125,7 +125,7 @@ async fn handle_connection(
     loop {
         line.clear();
         if reader.read_line(&mut line).await? == 0 {
-            break;  // 连接关闭
+            break;  // 连���关闭
         }
 
         // 解析命令
@@ -254,6 +254,18 @@ async fn handle_connection(
                     }
                     None => Response::Value(RedoxValue::SortedSet(std::collections::BTreeMap::new())),
                 }
+            }
+            Command::MSet(pairs) => {
+                let count = storage.mset(pairs).await;
+                Response::Integer(count)
+            }
+            Command::MGet(keys) => {
+                let values = storage.mget(&keys).await;
+                Response::Array(values)
+            }
+            Command::Info => {
+                let info = storage.info().await;
+                Response::Info(info)
             }
         };
 

@@ -1,4 +1,5 @@
 use serde::{Serialize, Deserialize};
+use std::collections::HashMap;
 
 /// 支持的数据类型
 /// 使用 serde 进行序列化和反序列化，支持 JSON 格式
@@ -374,7 +375,7 @@ impl Protocol {
     /// 将响应编码为字符串格式
     /// 
     /// # Arguments
-    /// * `resp` - 要编码的响应
+    /// * `resp` - 要编码��响应
     /// 
     /// # Returns
     /// 编码后的字符串，以换行符结尾
