@@ -73,8 +73,6 @@ impl Server {
 struct ConnectionState {
     /// 是否已通过认证
     authenticated: bool,
-    /// 是否需要认证
-    requires_auth: bool,
 }
 
 /// 处理单个客户端连接
@@ -97,9 +95,8 @@ async fn handle_connection(
     let mut line = String::new();
 
     // 初始化连接状态
-    let mut state = ConnectionState {
+    let state = ConnectionState {  // 移除 mut
         authenticated: password.is_none(),  // 如果没有设置密码，则默认已认证
-        requires_auth: password.is_some(),  // 如果设置了密码，则需要认证
     };
 
     // 主处理循环
@@ -121,8 +118,16 @@ async fn handle_connection(
 
         // 处理命令并生成响应
         let response = match cmd {
-            Command::Auth { password: _ } => {
-                Response::Error("Authentication not handled here".to_string())
+            Command::Auth { password: input_password } => {
+                if let Some(server_password) = &password {
+                    if input_password == **server_password {
+                        Response::Ok
+                    } else {
+                        Response::Error("Invalid password".to_string())
+                    }
+                } else {
+                    Response::Error("Authentication not required".to_string())
+                }
             }
             _ if !state.authenticated => {
                 Response::Error("Authentication required".to_string())
@@ -256,32 +261,4 @@ async fn handle_connection(
     }
 
     Ok(())
-}
-
-/// 处理认证命令
-/// 
-/// # Arguments
-/// * `state` - 连接状态
-/// * `server_password` - 服务器密码
-/// * `input_password` - 输入的密码
-/// 
-/// # Returns
-/// 认证结果响应
-fn handle_auth(
-    state: &mut ConnectionState,
-    server_password: &Option<Arc<String>>,
-    input_password: &str
-) -> Response {
-    if !state.requires_auth {
-        Response::Error("Authentication not required".to_string())
-    } else if let Some(correct_password) = server_password {
-        if input_password == **correct_password {
-            state.authenticated = true;
-            Response::Ok
-        } else {
-            Response::Error("Invalid password".to_string())
-        }
-    } else {
-        Response::Error("Server error".to_string())
-    }
 } 
