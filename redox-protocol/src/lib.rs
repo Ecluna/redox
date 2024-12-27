@@ -1,22 +1,54 @@
-/// 定义客户端可以发送的命令类型
-#[derive(Debug)]
-pub enum Command {
-    /// AUTH 命令：验证密码
-    Auth { password: String },
-    /// SET 命令：设置键值对
-    Set { key: String, value: String },
-    /// GET 命令：获取指定键的值
-    Get { key: String },
+/// 支持的数据类型
+#[derive(Debug, Clone)]
+pub enum RedoxValue {
+    String(String),
+    List(Vec<String>),
+    Set(std::collections::HashSet<String>),
+    Hash(std::collections::HashMap<String, String>),
+    SortedSet(std::collections::BTreeMap<String, f64>), // 键为成员，值为分数
 }
 
-/// 定义服务器的响应类型
+/// 命令类型
+#[derive(Debug)]
+pub enum Command {
+    // 认证
+    Auth { password: String },
+    
+    // 字符串操作
+    Set { key: String, value: String },
+    Get { key: String },
+    
+    // 列表操作
+    LPush { key: String, value: String },
+    RPush { key: String, value: String },
+    LPop { key: String },
+    RPop { key: String },
+    LRange { key: String, start: i64, stop: i64 },
+    
+    // 集合操作
+    SAdd { key: String, member: String },
+    SRem { key: String, member: String },
+    SMembers { key: String },
+    SIsMember { key: String, member: String },
+    
+    // 哈希操作
+    HSet { key: String, field: String, value: String },
+    HGet { key: String, field: String },
+    HGetAll { key: String },
+    HDel { key: String, field: String },
+    
+    // 有序集合操作
+    ZAdd { key: String, score: f64, member: String },
+    ZRem { key: String, member: String },
+    ZRange { key: String, start: i64, stop: i64 },
+    ZRangeByScore { key: String, min: f64, max: f64 },
+}
+
+/// 响应类型
 #[derive(Debug)]
 pub enum Response {
-    /// SET 命令成功响应
     Ok,
-    /// GET 命令成功响应，包含值
-    Value(String),
-    /// 错误响应：包含错误信息
+    Value(RedoxValue),
     Error(String),
 }
 
@@ -30,6 +62,23 @@ impl Protocol {
             Command::Auth { password } => format!("AUTH {}\n", password),
             Command::Set { key, value } => format!("SET {} {}\n", key, value),
             Command::Get { key } => format!("GET {}\n", key),
+            Command::LPush { key, value } => format!("LPUSH {} {}\n", key, value),
+            Command::RPush { key, value } => format!("RPUSH {} {}\n", key, value),
+            Command::LPop { key } => format!("LPOP {}\n", key),
+            Command::RPop { key } => format!("RPOP {}\n", key),
+            Command::LRange { key, start, stop } => format!("LRANGE {} {} {}\n", key, start, stop),
+            Command::SAdd { key, member } => format!("SADD {} {}\n", key, member),
+            Command::SRem { key, member } => format!("SREM {} {}\n", key, member),
+            Command::SMembers { key } => format!("SMEMBERS {}\n", key),
+            Command::SIsMember { key, member } => format!("SISMEMBER {} {}\n", key, member),
+            Command::HSet { key, field, value } => format!("HSET {} {} {}\n", key, field, value),
+            Command::HGet { key, field } => format!("HGET {} {}\n", key, field),
+            Command::HGetAll { key } => format!("HGETALL {}\n", key),
+            Command::HDel { key, field } => format!("HDEL {} {}\n", key, field),
+            Command::ZAdd { key, score, member } => format!("ZADD {} {} {}\n", key, score, member),
+            Command::ZRem { key, member } => format!("ZREM {} {}\n", key, member),
+            Command::ZRange { key, start, stop } => format!("ZRANGE {} {} {}\n", key, start, stop),
+            Command::ZRangeByScore { key, min, max } => format!("ZRANGEBYSCORE {} {} {}\n", key, min, max),
         }
     }
 
@@ -65,6 +114,15 @@ impl Protocol {
                         key: parts[1].to_string(),
                     })
                 }
+                "LPUSH" => {
+                    if parts.len() != 3 {
+                        return Err("LPUSH command requires KEY and VALUE".to_string());
+                    }
+                    Ok(Command::LPush {
+                        key: parts[1].to_string(),
+                        value: parts[2].to_string(),
+                    })
+                }
                 _ => Err("Unknown command".to_string()),
             },
             None => Err("Empty command".to_string()),
@@ -74,11 +132,26 @@ impl Protocol {
     /// 将响应编码为字符串格式
     pub fn encode_response(resp: &Response) -> String {
         match resp {
-            // SET 命令成功返回 OK
             Response::Ok => "OK\n".to_string(),
-            // GET 命令成���，有值时直接返回值
-            Response::Value(value) => format!("{}\n", value),
-            // 错误响应
+            Response::Value(value) => match value {
+                RedoxValue::String(s) => format!("{}\n", s),
+                RedoxValue::List(list) => format!("{}\n", list.join(" ")),
+                RedoxValue::Set(set) => format!("{}\n", set.iter().collect::<Vec<_>>().join(" ")),
+                RedoxValue::Hash(hash) => {
+                    let pairs: Vec<String> = hash
+                        .iter()
+                        .map(|(k, v)| format!("{} {}", k, v))
+                        .collect();
+                    format!("{}\n", pairs.join(" "))
+                },
+                RedoxValue::SortedSet(zset) => {
+                    let members: Vec<String> = zset
+                        .iter()
+                        .map(|(member, score)| format!("{} {}", member, score))
+                        .collect();
+                    format!("{}\n", members.join(" "))
+                },
+            },
             Response::Error(err) => format!("ERR {}\n", err),
         }
     }
