@@ -5,5 +5,5 @@ edition = "2021"
 
 [dependencies]
 tokio = { version = "1.36", features = ["full"] }
-bytes = "1.5"
-redox-protocol = { path = "../redox-protocol" } 
+redox-protocol = { path = "../redox-protocol" }
+clap = { version = "4.5", features = ["derive"] } 
