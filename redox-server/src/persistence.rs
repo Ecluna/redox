@@ -9,6 +9,8 @@ use redox_protocol::RedoxValue;
 use serde::{Serialize, Deserialize};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use tokio::fs::File;
+use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
 
 /// 持久化数据的序列化结构
 /// 使用 serde 进行 JSON 序列化和反序列化
@@ -56,40 +58,41 @@ impl Persistence {
         }
     }
 
-    /// 从文件加载数据
+    /// 从文件��载数据
     /// 
     /// # Returns
     /// * `Ok(HashMap)` - 成功加载的数据
     /// * `Err` - 加载过程中的错误
-    pub fn load(&self) -> io::Result<HashMap<String, RedoxValue>> {
+    pub async fn load(&self) -> io::Result<HashMap<String, RedoxValue>> {
         if !Path::new(&self.file_path).exists() {
             eprintln!("Data file not found: {}", self.file_path);
             return Ok(HashMap::new());
         }
 
-        let file = match File::open(&self.file_path) {
+        let file = match File::open(&self.file_path).await {
             Ok(f) => f,
             Err(e) => {
                 eprintln!("Error opening data file: {}", e);
                 return Err(e);
             }
         };
-        let reader = BufReader::new(file);
         
+        // 读取整个文件内容
+        let mut content = String::new();
+        let mut reader = BufReader::new(file);
+        reader.read_to_string(&mut content).await?;
+
         // 尝试以新格式读取
-        match serde_json::from_reader(reader) {
-            Ok(data) => {
-                let persistent_data: PersistentData = data;
-                let mut expiry = self.expiry.blocking_lock();
+        match serde_json::from_str::<PersistentData>(&content) {
+            Ok(persistent_data) => {
+                let mut expiry = self.expiry.lock().await;
                 *expiry = persistent_data.expiry;
                 Ok(persistent_data.data)
             }
             Err(e) => {
                 eprintln!("Failed to read as new format: {}", e);
                 // 如果失败，尝试以旧格式读取
-                let file = File::open(&self.file_path)?;
-                let reader = BufReader::new(file);
-                match serde_json::from_reader::<_, LegacyData>(reader) {
+                match serde_json::from_str::<LegacyData>(&content) {
                     Ok(legacy_data) => {
                         println!("Successfully loaded data in legacy format");
                         Ok(legacy_data.data)
@@ -111,23 +114,25 @@ impl Persistence {
     /// # Returns
     /// * `Ok(())` - 保存成功
     /// * `Err` - 保存过程中的错误
-    pub fn save(&self, data: &HashMap<String, RedoxValue>) -> io::Result<()> {
-        let expiry = self.expiry.blocking_lock();
+    pub async fn save(&self, data: &HashMap<String, RedoxValue>) -> io::Result<()> {
+        let expiry = self.expiry.lock().await;
         let persistent_data = PersistentData {
             data: data.clone(),
             expiry: expiry.clone(),
         };
 
-        // 创建临时文件，确保写入操作的原子性
+        // 创建临时文件
         let temp_path = format!("{}.temp", self.file_path);
-        let file = File::create(&temp_path)?;
-        let writer = BufWriter::new(file);
+        let file = File::create(&temp_path).await?;
+        let mut writer = BufWriter::new(file);
 
-        // 将数据序列化为 JSON 并写入临时文件
-        serde_json::to_writer(writer, &persistent_data)?;
+        // 序列化数据
+        let json = serde_json::to_string(&persistent_data)?;
+        writer.write_all(json.as_bytes()).await?;
+        writer.flush().await?;
 
-        // 原子性地用临时文件替换原文件
-        fs::rename(temp_path, &self.file_path)?;
+        // 原子性地替换文件
+        tokio::fs::rename(temp_path, &self.file_path).await?;
         Ok(())
     }
 
@@ -145,19 +150,18 @@ impl Persistence {
         loop {
             interval.tick().await;
             
-            // 检查是否需要保存
             if !self.dirty.load(Ordering::Relaxed) {
                 continue;
             }
 
             let data = data.lock().await;
-            if let Err(e) = self.save(&data) {
+            if let Err(e) = self.save(&data).await {
                 eprintln!("Error saving data: {}", e);
             } else {
                 self.dirty.store(false, Ordering::Relaxed);
                 self.last_save.store(
-                    std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
+                    SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
                         .unwrap()
                         .as_secs(),
                     Ordering::Relaxed
