@@ -148,7 +148,13 @@ impl Storage {
     pub async fn lpop(&self, key: &str) -> Option<String> {
         let mut data = self.data.lock().await;
         let result = match data.get_mut(key) {
-            Some(RedoxValue::List(list)) => list.pop(),
+            Some(RedoxValue::List(list)) => {
+                if list.is_empty() {
+                    None
+                } else {
+                    Some(list.remove(0))
+                }
+            }
             _ => None,
         };
         if result.is_some() {
@@ -160,13 +166,7 @@ impl Storage {
     pub async fn rpop(&self, key: &str) -> Option<String> {
         let mut data = self.data.lock().await;
         let result = match data.get_mut(key) {
-            Some(RedoxValue::List(list)) => {
-                if list.is_empty() {
-                    None
-                } else {
-                    Some(list.remove(0))
-                }
-            }
+            Some(RedoxValue::List(list)) => list.pop(),
             _ => None,
         };
         if result.is_some() {
@@ -358,11 +358,15 @@ impl Storage {
                     return Some(vec![]);
                 }
                 
-                // 先按分数排序
+                // 先按分数排序，分数相同时按成员字典序排序
                 let mut members: Vec<(String, f64)> = zset.iter()
                     .map(|(k, v)| (k.clone(), *v))
                     .collect();
-                members.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+                members.sort_by(|a, b| {
+                    a.1.partial_cmp(&b.1)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                        .then(a.0.cmp(&b.0))
+                });
                 
                 let (start, stop) = normalize_range(start, stop, len);
                 Some(members.into_iter()
@@ -378,11 +382,15 @@ impl Storage {
         let data = self.data.lock().await;
         match data.get(key) {
             Some(RedoxValue::SortedSet(zset)) => {
-                // 先按分数排序
+                // 先按分数排序，分数相同时按成员字典序排序
                 let mut members: Vec<(String, f64)> = zset.iter()
                     .map(|(k, v)| (k.clone(), *v))
                     .collect();
-                members.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+                members.sort_by(|a, b| {
+                    a.1.partial_cmp(&b.1)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                        .then(a.0.cmp(&b.0))
+                });
                 
                 Some(members.into_iter()
                     .filter(|(_, score)| *score >= min && *score <= max)
@@ -460,7 +468,7 @@ impl Storage {
         let mut data = self.data.lock().await;
         let mut expired_keys = Vec::new();
         
-        // 收集过期的键
+        // 收集过期���键
         for key in data.keys() {
             if self.is_expired(key).await {
                 expired_keys.push(key.clone());
@@ -482,9 +490,7 @@ impl Storage {
         let data = self.data.lock().await;
         let mut info = HashMap::new();
         
-        info.insert("keys".to_string(), data.len().to_string());
-        
-        // 统计不同类型的键数量
+        // 先统计所有类型的键数量
         let mut strings = 0;
         let mut lists = 0;
         let mut sets = 0;
@@ -501,10 +507,12 @@ impl Storage {
             }
         }
         
-        info.insert("strings".to_string(), strings.to_string());
+        // 按字母顺序插入统计信息
+        info.insert("hashes".to_string(), hashes.to_string());
+        info.insert("keys".to_string(), data.len().to_string());
         info.insert("lists".to_string(), lists.to_string());
         info.insert("sets".to_string(), sets.to_string());
-        info.insert("hashes".to_string(), hashes.to_string());
+        info.insert("strings".to_string(), strings.to_string());
         info.insert("zsets".to_string(), zsets.to_string());
         
         info

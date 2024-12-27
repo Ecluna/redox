@@ -375,7 +375,7 @@ impl Protocol {
     /// 将响应编码为字符串格式
     /// 
     /// # Arguments
-    /// * `resp` - 要编码��响应
+    /// * `resp` - 要编码的响应
     /// 
     /// # Returns
     /// 编码后的字符串，以换行符结尾
@@ -409,7 +409,7 @@ impl Protocol {
                 let items: Vec<String> = items.iter()
                     .map(|item| item.as_ref().map(|s| s.to_string()).unwrap_or("NIL".to_string()))
                     .collect();
-                items.join(" ")
+                format!("{}\n", items.join(" "))
             },
             Response::Integer(value) => format!("{}\n", value),
             Response::Info(info) => {
@@ -417,7 +417,8 @@ impl Protocol {
                 for (key, value) in info {
                     result.push(format!("{}: {}", key, value));
                 }
-                result.join("\n")
+                result.sort();  // 保证顺序一致
+                format!("{}\n", result.join("\n"))
             },
         }
     }
