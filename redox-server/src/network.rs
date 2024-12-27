@@ -1,5 +1,5 @@
 use crate::storage::Storage;
-use redox_protocol::{Command, Protocol, Response};
+use redox_protocol::{Command, Protocol, Response, RedoxValue};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use std::io;
@@ -65,8 +65,8 @@ async fn handle_connection(
     let mut line = String::new();
 
     let mut state = ConnectionState {
-        authenticated: password.is_none(), // 如果没有设置密码，则默认已认证
-        requires_auth: password.is_some(), // 是否需要认证
+        authenticated: password.is_none(),
+        requires_auth: password.is_some(),
     };
 
     loop {
@@ -86,30 +86,118 @@ async fn handle_connection(
 
         let response = match cmd {
             Command::Auth { password: input_password } => {
-                if !state.requires_auth {
-                    Response::Error("Authentication not required".to_string())
-                } else if let Some(correct_password) = &password {
-                    if input_password == **correct_password {
-                        state.authenticated = true;
-                        Response::Ok
-                    } else {
-                        Response::Error("Invalid password".to_string())
-                    }
-                } else {
-                    Response::Error("Server error".to_string())
-                }
+                handle_auth(&mut state, &password, &input_password)
             }
             _ if !state.authenticated => {
                 Response::Error("Authentication required".to_string())
             }
+            // 字符串操作
             Command::Set { key, value } => {
-                storage.set(key, value).await;
+                storage.set_string(key, value).await;
                 Response::Ok
             }
             Command::Get { key } => {
-                match storage.get(&key).await {
-                    Some(value) => Response::Value(value),
-                    None => Response::Value("NIL".to_string()),
+                match storage.get_string(&key).await {
+                    Some(value) => Response::Value(RedoxValue::String(value)),
+                    None => Response::Value(RedoxValue::String("NIL".to_string())),
+                }
+            }
+            // 列表操作
+            Command::LPush { key, value } => {
+                let len = storage.lpush(key, value).await;
+                Response::Value(RedoxValue::String(len.to_string()))
+            }
+            Command::RPush { key, value } => {
+                let len = storage.rpush(key, value).await;
+                Response::Value(RedoxValue::String(len.to_string()))
+            }
+            Command::LPop { key } => {
+                match storage.lpop(&key).await {
+                    Some(value) => Response::Value(RedoxValue::String(value)),
+                    None => Response::Value(RedoxValue::String("NIL".to_string())),
+                }
+            }
+            Command::RPop { key } => {
+                match storage.rpop(&key).await {
+                    Some(value) => Response::Value(RedoxValue::String(value)),
+                    None => Response::Value(RedoxValue::String("NIL".to_string())),
+                }
+            }
+            Command::LRange { key, start, stop } => {
+                match storage.lrange(&key, start, stop).await {
+                    Some(list) => Response::Value(RedoxValue::List(list)),
+                    None => Response::Value(RedoxValue::List(vec![])),
+                }
+            }
+            // 集合操作
+            Command::SAdd { key, member } => {
+                let added = storage.sadd(key, member).await;
+                Response::Value(RedoxValue::String(if added { "1" } else { "0" }.to_string()))
+            }
+            Command::SRem { key, member } => {
+                let removed = storage.srem(&key, &member).await;
+                Response::Value(RedoxValue::String(if removed { "1" } else { "0" }.to_string()))
+            }
+            Command::SMembers { key } => {
+                match storage.smembers(&key).await {
+                    Some(members) => Response::Value(RedoxValue::Set(members.into_iter().collect())),
+                    None => Response::Value(RedoxValue::Set(std::collections::HashSet::new())),
+                }
+            }
+            Command::SIsMember { key, member } => {
+                let is_member = storage.sismember(&key, &member).await;
+                Response::Value(RedoxValue::String(if is_member { "1" } else { "0" }.to_string()))
+            }
+            // 哈希表操作
+            Command::HSet { key, field, value } => {
+                let is_new = storage.hset(key, field, value).await;
+                Response::Value(RedoxValue::String(if is_new { "1" } else { "0" }.to_string()))
+            }
+            Command::HGet { key, field } => {
+                match storage.hget(&key, &field).await {
+                    Some(value) => Response::Value(RedoxValue::String(value)),
+                    None => Response::Value(RedoxValue::String("NIL".to_string())),
+                }
+            }
+            Command::HDel { key, field } => {
+                let deleted = storage.hdel(&key, &field).await;
+                Response::Value(RedoxValue::String(if deleted { "1" } else { "0" }.to_string()))
+            }
+            Command::HGetAll { key } => {
+                match storage.hgetall(&key).await {
+                    Some(hash) => Response::Value(RedoxValue::Hash(hash)),
+                    None => Response::Value(RedoxValue::Hash(std::collections::HashMap::new())),
+                }
+            }
+            // 有序集合操作
+            Command::ZAdd { key, score, member } => {
+                let added = storage.zadd(key, score, member).await;
+                Response::Value(RedoxValue::String(if added { "1" } else { "0" }.to_string()))
+            }
+            Command::ZRem { key, member } => {
+                let removed = storage.zrem(&key, &member).await;
+                Response::Value(RedoxValue::String(if removed { "1" } else { "0" }.to_string()))
+            }
+            Command::ZRange { key, start, stop } => {
+                match storage.zrange(&key, start, stop).await {
+                    Some(members) => {
+                        let zset = members.into_iter()
+                            .map(|(member, score)| (member, score))
+                            .collect();
+                        Response::Value(RedoxValue::SortedSet(zset))
+                    }
+                    None => Response::Value(RedoxValue::SortedSet(std::collections::BTreeMap::new())),
+                }
+            }
+            Command::ZRangeByScore { key, min, max } => {
+                match storage.zrangebyscore(&key, min, max).await {
+                    Some(members) => {
+                        let zset = members.into_iter()
+                            .map(|(member, score)| (member, score))
+                            .collect();
+                        Response::Value(RedoxValue::SortedSet(zset))
+                    }
+                    None => Response::Value(RedoxValue::SortedSet(std::collections::BTreeMap::new())),
                 }
             }
         };
@@ -119,4 +207,19 @@ async fn handle_connection(
     }
 
     Ok(())
+}
+
+fn handle_auth(state: &mut ConnectionState, server_password: &Option<Arc<String>>, input_password: &str) -> Response {
+    if !state.requires_auth {
+        Response::Error("Authentication not required".to_string())
+    } else if let Some(correct_password) = server_password {
+        if input_password == **correct_password {
+            state.authenticated = true;
+            Response::Ok
+        } else {
+            Response::Error("Invalid password".to_string())
+        }
+    } else {
+        Response::Error("Server error".to_string())
+    }
 } 
