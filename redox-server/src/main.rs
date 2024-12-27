@@ -1,8 +1,10 @@
 mod network;
 mod storage;
+mod persistence;
 
 use network::Server;
 use storage::Storage;
+use persistence::Persistence;
 use clap::Parser;
 use std::time::Duration;
 
