@@ -2,6 +2,7 @@
 members = [
     "redox-protocol",
     "redox-server",
+    "redox-cli"
 ]
 resolver = "2"
 
