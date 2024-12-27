@@ -5,14 +5,21 @@ use tokio::net::{TcpListener, TcpStream};
 use std::io;
 use std::sync::Arc;
 
-/// 服务器结构体，持有存储实例
+/// 服务器结构体
+/// 管理网络连接和存储实例
 pub struct Server {
+    /// 存储实例，用于数据操作
     storage: Storage,
+    /// 可选的认证密码
     password: Option<Arc<String>>,
 }
 
 impl Server {
     /// 创建新的服务器实例
+    /// 
+    /// # Arguments
+    /// * `storage` - 存储实例
+    /// * `password` - 可选的认证密码
     pub fn new(storage: Storage, password: Option<String>) -> Self {
         Server { 
             storage,
@@ -20,13 +27,27 @@ impl Server {
         }
     }
 
-    /// 尝试绑定地址，返回是否成功
+    /// 尝试绑定到指定地址
+    /// 
+    /// # Arguments
+    /// * `addr` - 要绑定的地址（如 "127.0.0.1:6379"）
+    /// 
+    /// # Returns
+    /// * `Ok(())` - 绑定成功
+    /// * `Err` - 绑定失败的错误
     pub async fn try_bind(&self, addr: &str) -> io::Result<()> {
         TcpListener::bind(addr).await?;
         Ok(())
     }
 
-    /// 运行服务器，监听指定地址
+    /// 运行服务器，监听连接
+    /// 
+    /// # Arguments
+    /// * `addr` - 监听地址
+    /// 
+    /// # Returns
+    /// * `Ok(())` - 服务器正常退出
+    /// * `Err` - 运行过程中的错误
     pub async fn run(&self, addr: &str) -> Result<(), Box<dyn std::error::Error>> {
         // 绑定 TCP 监听器
         let listener = TcpListener::bind(addr).await?;
@@ -38,7 +59,7 @@ impl Server {
             let storage = self.storage.clone();
             let password = self.password.clone();
             
-            // 为每个连接创建新的任务
+            // 为每个连接创建新的异步任务
             tokio::spawn(async move {
                 if let Err(e) = handle_connection(socket, storage, password).await {
                     eprintln!("Error handling connection: {}", e);
@@ -48,13 +69,24 @@ impl Server {
     }
 }
 
-/// 处理单个客户端连接的状态
+/// 客户端连接的状态
 struct ConnectionState {
+    /// 是否已通过认证
     authenticated: bool,
+    /// 是否需要认证
     requires_auth: bool,
 }
 
 /// 处理单个客户端连接
+/// 
+/// # Arguments
+/// * `socket` - TCP 连接
+/// * `storage` - 存储实例
+/// * `password` - 可选的认证密码
+/// 
+/// # Returns
+/// * `Ok(())` - 连接正常关闭
+/// * `Err` - 处理过程中的错误
 async fn handle_connection(
     mut socket: TcpStream,
     storage: Storage,
@@ -64,17 +96,20 @@ async fn handle_connection(
     let mut reader = BufReader::new(reader);
     let mut line = String::new();
 
+    // 初始化连接状态
     let mut state = ConnectionState {
-        authenticated: password.is_none(),
-        requires_auth: password.is_some(),
+        authenticated: password.is_none(),  // 如果没有设置密码，则默认已认证
+        requires_auth: password.is_some(),  // 如果设置了密码，则需要认证
     };
 
+    // 主处理循环
     loop {
         line.clear();
         if reader.read_line(&mut line).await? == 0 {
-            break;
+            break;  // 连接关闭
         }
 
+        // 解析命令
         let cmd = match Protocol::decode_command(&line) {
             Ok(cmd) => cmd,
             Err(e) => {
@@ -84,6 +119,7 @@ async fn handle_connection(
             }
         };
 
+        // 处理命令并生成响应
         let response = match cmd {
             Command::Auth { password: input_password } => {
                 handle_auth(&mut state, &password, &input_password)
@@ -202,6 +238,7 @@ async fn handle_connection(
             }
         };
 
+        // 发送响应
         let response_str = Protocol::encode_response(&response);
         writer.write_all(response_str.as_bytes()).await?;
     }
@@ -209,7 +246,20 @@ async fn handle_connection(
     Ok(())
 }
 
-fn handle_auth(state: &mut ConnectionState, server_password: &Option<Arc<String>>, input_password: &str) -> Response {
+/// 处理认证命令
+/// 
+/// # Arguments
+/// * `state` - 连接状态
+/// * `server_password` - 服务器密码
+/// * `input_password` - 输入的密码
+/// 
+/// # Returns
+/// 认证结果响应
+fn handle_auth(
+    state: &mut ConnectionState,
+    server_password: &Option<Arc<String>>,
+    input_password: &str
+) -> Response {
     if !state.requires_auth {
         Response::Error("Authentication not required".to_string())
     } else if let Some(correct_password) = server_password {
