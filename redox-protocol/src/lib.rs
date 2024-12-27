@@ -1,54 +1,86 @@
+use serde::{Serialize, Deserialize};
+
 /// 支持的数据类型
-#[derive(Debug, Clone)]
+/// 使用 serde 进行序列化和反序列化，支持 JSON 格式
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RedoxValue {
+    /// 字符串类型
     String(String),
+    /// 列表类型，使用 Vec 实现
     List(Vec<String>),
+    /// 集合类型，使用 HashSet 实现，保证元素唯一性
     Set(std::collections::HashSet<String>),
+    /// 哈希表类型，键值对存储
     Hash(std::collections::HashMap<String, String>),
-    SortedSet(std::collections::BTreeMap<String, f64>), // 键为成员，值为分数
+    /// 有序集合类型，使用 BTreeMap 实现
+    /// 键为成员，值为分数，通过分数自动排序
+    SortedSet(std::collections::BTreeMap<String, f64>),
 }
 
 /// 命令类型
+/// 定义所有支持的命令及其参数
 #[derive(Debug)]
 pub enum Command {
-    // 认证
+    /// 认证命令
     Auth { password: String },
     
     // 字符串操作
+    /// SET key value
     Set { key: String, value: String },
+    /// GET key
     Get { key: String },
     
     // 列表操作
+    /// LPUSH key value
     LPush { key: String, value: String },
+    /// RPUSH key value
     RPush { key: String, value: String },
+    /// LPOP key
     LPop { key: String },
+    /// RPOP key
     RPop { key: String },
+    /// LRANGE key start stop
     LRange { key: String, start: i64, stop: i64 },
     
     // 集合操作
+    /// SADD key member
     SAdd { key: String, member: String },
+    /// SREM key member
     SRem { key: String, member: String },
+    /// SMEMBERS key
     SMembers { key: String },
+    /// SISMEMBER key member
     SIsMember { key: String, member: String },
     
     // 哈希操作
+    /// HSET key field value
     HSet { key: String, field: String, value: String },
+    /// HGET key field
     HGet { key: String, field: String },
+    /// HGETALL key
     HGetAll { key: String },
+    /// HDEL key field
     HDel { key: String, field: String },
     
     // 有序集合操作
+    /// ZADD key score member
     ZAdd { key: String, score: f64, member: String },
+    /// ZREM key member
     ZRem { key: String, member: String },
+    /// ZRANGE key start stop
     ZRange { key: String, start: i64, stop: i64 },
+    /// ZRANGEBYSCORE key min max
     ZRangeByScore { key: String, min: f64, max: f64 },
 }
 
 /// 响应类型
 #[derive(Debug)]
 pub enum Response {
+    /// 操作成功，无返回值
     Ok,
+    /// 操作成功，返回值
     Value(RedoxValue),
+    /// 操作失败，错误信息
     Error(String),
 }
 
@@ -57,6 +89,12 @@ pub struct Protocol;
 
 impl Protocol {
     /// 将命令编码为字符串格式
+    /// 
+    /// # Arguments
+    /// * `cmd` - 要编码的命令
+    /// 
+    /// # Returns
+    /// 编码后的字符串，以换行符结尾
     pub fn encode_command(cmd: &Command) -> String {
         match cmd {
             Command::Auth { password } => format!("AUTH {}\n", password),
@@ -83,6 +121,13 @@ impl Protocol {
     }
 
     /// 将输入字符串解析为命令
+    /// 
+    /// # Arguments
+    /// * `input` - 输入的命令字符串
+    /// 
+    /// # Returns
+    /// * `Ok(Command)` - 解析成功的命令
+    /// * `Err(String)` - 解析错误信息
     pub fn decode_command(input: &str) -> Result<Command, String> {
         let input = input.trim();
         let parts: Vec<&str> = input.split_whitespace().collect();
@@ -289,6 +334,12 @@ impl Protocol {
     }
 
     /// 将响应编码为字符串格式
+    /// 
+    /// # Arguments
+    /// * `resp` - 要编码的响应
+    /// 
+    /// # Returns
+    /// 编码后的字符串，以换行符结尾
     pub fn encode_response(resp: &Response) -> String {
         match resp {
             Response::Ok => "OK\n".to_string(),
