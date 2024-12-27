@@ -138,11 +138,13 @@ impl Persistence {
         }
     }
 
+    #[allow(dead_code)]
     pub async fn set_expiry(&self, key: String, expires: u64) {
         let mut expiry = self.expiry.lock().await;
         expiry.insert(key, expires);
     }
 
+    #[allow(dead_code)]
     pub async fn get_expiry(&self, key: &str) -> Option<u64> {
         let expiry = self.expiry.lock().await;
         expiry.get(key).copied()

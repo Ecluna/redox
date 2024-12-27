@@ -373,6 +373,7 @@ impl Storage {
     }
 
     /// 批量设置字符串值
+    #[allow(dead_code)]
     pub async fn mset(&self, pairs: Vec<(String, String)>) -> usize {
         let mut data = self.data.lock().await;
         let mut count = 0;
@@ -387,6 +388,7 @@ impl Storage {
     }
 
     /// 批量获取字符串值
+    #[allow(dead_code)]
     pub async fn mget(&self, keys: &[String]) -> Vec<Option<String>> {
         let data = self.data.lock().await;
         keys.iter().map(|key| {
@@ -398,6 +400,7 @@ impl Storage {
     }
 
     /// 设置键的过期时间（秒）
+    #[allow(dead_code)]
     pub async fn expire(&self, key: &str, seconds: u64) -> bool {
         let mut data = self.data.lock().await;
         if !data.contains_key(key) {
@@ -411,7 +414,7 @@ impl Storage {
             
         // 存储过期时间
         if let Some(p) = &self.persistence {
-            p.set_expiry(key.to_string(), expires);
+            p.set_expiry(key.to_string(), expires).await;
             self.mark_dirty();
         }
         true
@@ -432,6 +435,7 @@ impl Storage {
     }
 
     /// 清理过期的键
+    #[allow(dead_code)]
     pub async fn cleanup_expired(&self) {
         let mut data = self.data.lock().await;
         let mut expired_keys = Vec::new();
@@ -453,6 +457,7 @@ impl Storage {
     }
 
     /// 获取存储统计信息
+    #[allow(dead_code)]
     pub async fn info(&self) -> HashMap<String, String> {
         let data = self.data.lock().await;
         let mut info = HashMap::new();
@@ -490,7 +495,7 @@ impl Storage {
 /// 
 /// # Arguments
 /// * `start` - 起始索引（可以是负数）
-/// * `stop` - 结束索引（可以是负数）
+/// * `stop` - 结束索引（可���是负数）
 /// * `len` - 列表总长度
 /// 
 /// # Returns
