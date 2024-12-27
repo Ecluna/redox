@@ -67,6 +67,25 @@ impl Server {
             });
         }
     }
+
+    async fn handle_command(&self, command: Command) -> Response {
+        match command {
+            // ... 现有命令处理 ...
+            Command::MSet(pairs) => {
+                let count = self.storage.mset(pairs).await;
+                Response::Integer(count)
+            }
+            Command::MGet(keys) => {
+                let values = self.storage.mget(&keys).await;
+                Response::Array(values)
+            }
+            Command::Info => {
+                let info = self.storage.info().await;
+                Response::Info(info)
+            }
+            // ... 其他命令处理 ...
+        }
+    }
 }
 
 /// 客户端连接的状态

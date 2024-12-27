@@ -71,6 +71,9 @@ pub enum Command {
     ZRange { key: String, start: i64, stop: i64 },
     /// ZRANGEBYSCORE key min max
     ZRangeByScore { key: String, min: f64, max: f64 },
+    MSet(Vec<(String, String)>),  // 批量设置
+    MGet(Vec<String>),           // 批量获取
+    Info,                        // 获取信息
 }
 
 /// 响应类型
@@ -82,6 +85,9 @@ pub enum Response {
     Value(RedoxValue),
     /// 操作失败，错误信息
     Error(String),
+    Array(Vec<Option<String>>),  // 用于 MGET 的响应
+    Integer(usize),              // 用于 MSET 的响应
+    Info(HashMap<String, String>), // 用于 INFO 的响应
 }
 
 /// 协议解析和编码的实现
@@ -117,6 +123,21 @@ impl Protocol {
             Command::ZRem { key, member } => format!("ZREM {} {}\n", key, member),
             Command::ZRange { key, start, stop } => format!("ZRANGE {} {} {}\n", key, start, stop),
             Command::ZRangeByScore { key, min, max } => format!("ZRANGEBYSCORE {} {} {}\n", key, min, max),
+            Command::MSet(pairs) => {
+                let mut cmd = String::new();
+                for (key, value) in pairs {
+                    cmd.push_str(&format!("SET {} {}\n", key, value));
+                }
+                cmd
+            },
+            Command::MGet(keys) => {
+                let mut cmd = String::new();
+                for key in keys {
+                    cmd.push_str(&format!("GET {}\n", key));
+                }
+                cmd
+            },
+            Command::Info => "INFO\n".to_string(),
         }
     }
 
@@ -327,7 +348,24 @@ impl Protocol {
                         max,
                     })
                 }
-                _ => Err("Unknown command".to_string()),
+                "MSET" => {
+                    if parts.len() < 3 || parts.len() % 2 != 1 {
+                        return Err("MSET requires key value pairs".to_string());
+                    }
+                    let mut pairs = Vec::new();
+                    for chunk in parts[1..].chunks(2) {
+                        pairs.push((chunk[0].to_string(), chunk[1].to_string()));
+                    }
+                    Ok(Command::MSet(pairs))
+                }
+                "MGET" => {
+                    if parts.len() < 2 {
+                        return Err("MGET requires at least one key".to_string());
+                    }
+                    Ok(Command::MGet(parts[1..].iter().map(|s| s.to_string()).collect()))
+                }
+                "INFO" => Ok(Command::Info),
+                _ => Err(format!("Unknown command: {}", parts[0])),
             },
             None => Err("Empty command".to_string()),
         }
@@ -366,6 +404,20 @@ impl Protocol {
                 },
             },
             Response::Error(err) => format!("ERR {}\n", err),
+            Response::Array(items) => {
+                let items: Vec<String> = items.iter()
+                    .map(|item| item.as_ref().map(|s| s.to_string()).unwrap_or("NIL".to_string()))
+                    .collect();
+                items.join(" ")
+            },
+            Response::Integer(value) => format!("{}\n", value),
+            Response::Info(info) => {
+                let mut result = Vec::new();
+                for (key, value) in info {
+                    result.push(format!("{}: {}", key, value));
+                }
+                result.join("\n")
+            },
         }
     }
 } 
