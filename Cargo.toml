@@ -3,6 +3,7 @@ members = [
     "redox-protocol",
     "redox-server",
 ]
+resolver = "2"
 
 [profile.release]
 opt-level = 3
