@@ -420,7 +420,7 @@ impl Storage {
     /// 检查键是否过期
     async fn is_expired(&self, key: &str) -> bool {
         if let Some(p) = &self.persistence {
-            if let Some(expires) = p.get_expiry(key) {
+            if let Some(expires) = p.get_expiry(key).await {
                 let now = SystemTime::now()
                     .duration_since(UNIX_EPOCH)
                     .unwrap()
@@ -459,7 +459,7 @@ impl Storage {
         
         info.insert("keys".to_string(), data.len().to_string());
         
-        // 统计不同类��的键数量
+        // 统计不同类型的键数量
         let mut strings = 0;
         let mut lists = 0;
         let mut sets = 0;
