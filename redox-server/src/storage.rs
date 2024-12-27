@@ -402,7 +402,7 @@ impl Storage {
     /// 设置键的过期时间（秒）
     #[allow(dead_code)]
     pub async fn expire(&self, key: &str, seconds: u64) -> bool {
-        let mut data = self.data.lock().await;
+        let data = self.data.lock().await;
         if !data.contains_key(key) {
             return false;
         }
