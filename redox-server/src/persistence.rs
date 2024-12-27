@@ -19,6 +19,12 @@ struct PersistentData {
     expiry: HashMap<String, u64>,
 }
 
+/// 旧版本的数据格式
+#[derive(Serialize, Deserialize)]
+struct LegacyData {
+    data: HashMap<String, RedoxValue>,
+}
+
 /// 持久化管理器
 /// 负责数据的加载、保存和自动保存
 #[derive(Clone)]
@@ -56,23 +62,45 @@ impl Persistence {
     /// * `Ok(HashMap)` - 成功加载的数据
     /// * `Err` - 加载过程中的错误
     pub fn load(&self) -> io::Result<HashMap<String, RedoxValue>> {
-        // 如果文件不存在，返回空哈希表
         if !Path::new(&self.file_path).exists() {
+            eprintln!("Data file not found: {}", self.file_path);
             return Ok(HashMap::new());
         }
 
-        // 打开文件并创建带缓冲的读取器
-        let file = File::open(&self.file_path)?;
+        let file = match File::open(&self.file_path) {
+            Ok(f) => f,
+            Err(e) => {
+                eprintln!("Error opening data file: {}", e);
+                return Err(e);
+            }
+        };
         let reader = BufReader::new(file);
         
-        // 从 JSON 反序列化数据
-        let data: PersistentData = serde_json::from_reader(reader)?;
-        
-        // 加载过期时间
-        let mut expiry = self.expiry.blocking_lock();
-        *expiry = data.expiry;
-        
-        Ok(data.data)
+        // 尝试以新格式读取
+        match serde_json::from_reader(reader) {
+            Ok(data) => {
+                let persistent_data: PersistentData = data;
+                let mut expiry = self.expiry.blocking_lock();
+                *expiry = persistent_data.expiry;
+                Ok(persistent_data.data)
+            }
+            Err(e) => {
+                eprintln!("Failed to read as new format: {}", e);
+                // 如果失败，尝试以旧格式读取
+                let file = File::open(&self.file_path)?;
+                let reader = BufReader::new(file);
+                match serde_json::from_reader::<_, LegacyData>(reader) {
+                    Ok(legacy_data) => {
+                        println!("Successfully loaded data in legacy format");
+                        Ok(legacy_data.data)
+                    }
+                    Err(e) => {
+                        eprintln!("Error deserializing data: {}", e);
+                        Err(io::Error::new(io::ErrorKind::InvalidData, e))
+                    }
+                }
+            }
+        }
     }
 
     /// 将数据保存到文件
