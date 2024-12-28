@@ -20,7 +20,7 @@
 
 ## 📦 安装
 
-确保你已经安装了 Rust 和 Cargo:
+确保你已经安装了 Rust 和 Cargo
 ```bash
 # Windows
 winget install Rustlang.Rust
@@ -31,24 +31,21 @@ brew install rust
 # Linux
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
-克隆仓库：
+克隆仓库
 
 ```bash
 git clone https://github.com/Ecluna/redox.git
 cd redox
 ```
-构建项目:
+构建项目
 ```bash
 cargo build --release
-```
-安装命令行工具
-```bash
-cargo install --path redox-cli
 ```
 
 ## 🚀 使用指南
 
 ### 🖥️ 启动服务器
+#### 方式一：使用 cargo run
 
 ```bash
 基本启动
@@ -59,6 +56,17 @@ cargo run -p redox-server -- -f data.json
 cargo run -p redox-server -- -f data.json -i 60 -p mypassword -P 2001
 ```
 
+#### 方式二：直接使用命令（推荐）
+```bash
+安装server
+cargo install --path redox-server
+启动server
+redox-server
+启动持久化
+redox-server -f data.json
+完整配置启动
+redox-server -f data.json -i 60 -p mypassword -P 2001
+```
 服务器参数说明：
 - `-f, --data-file <路径>` 📁: 指定数据文件路径
 - `-i, --save-interval <秒数>` ⏲️: 自动保存间隔（默认：60秒）
@@ -66,15 +74,22 @@ cargo run -p redox-server -- -f data.json -i 60 -p mypassword -P 2001
 - `-P, --port <端口>` 🔌: 监听端口（默认：2001）
 
 ### 🖱️ 使用客户端
-
+#### 方式一：使用 cargo run
 ```bash
-连接服务器
+默认连接2001端口
+cargo run -p redox-cli
+指定端口连接
+cargo run -p redox-cli -- 2001
+```
+
+#### 方式二：直接使用命令（推荐）
+```bash
+安装cli
+cargo install --path redox-cli
+默认连接2001端口
 redox-cli
 指定端口连接
 redox-cli 2001
-或直接运行（无需安装）
-cargo run -p redox-cli
-cargo run -p redox-cli -- 2001
 ```
 
 ## 📝 支持的命令
