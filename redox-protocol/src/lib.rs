@@ -76,9 +76,13 @@ pub enum Command {
     MGet(Vec<String>),           // 批量获取
     Info,                        // 获取信息
     Del(Vec<String>),  // DEL 命令支持删除多个键
+    // 过期时间���令
+    Expire { key: String, seconds: u64 },  // 设置过期时间
+    TTL { key: String },                   // 获取剩余时间
+    Persist { key: String },               // 移除过期时间
 }
 
-/// 响应类��
+/// 响应类型
 #[derive(Debug)]
 pub enum Response {
     /// 操作成功，无返回值
@@ -88,7 +92,7 @@ pub enum Response {
     /// 操作失败，错误信息
     Error(String),
     Array(Vec<Option<String>>),  // 用于 MGET 的响应
-    Integer(usize),              // 用于 MSET 的响应
+    Integer(i64),              // 用于 MSET 的响应
     Info(HashMap<String, String>), // 用于 INFO 的响应
 }
 
@@ -141,6 +145,9 @@ impl Protocol {
             },
             Command::Info => "INFO\n".to_string(),
             Command::Del(keys) => format!("DEL {}\n", keys.join(" ")),
+            Command::Expire { key, seconds } => format!("EXPIRE {} {}\n", key, seconds),
+            Command::TTL { key } => format!("TTL {}\n", key),
+            Command::Persist { key } => format!("PERSIST {}\n", key),
         }
     }
 
@@ -373,6 +380,33 @@ impl Protocol {
                         return Err("DEL command requires at least one KEY".to_string());
                     }
                     Ok(Command::Del(parts[1..].iter().map(|s| s.to_string()).collect()))
+                },
+                "EXPIRE" => {
+                    if parts.len() != 3 {
+                        return Err("EXPIRE command requires KEY and SECONDS".to_string());
+                    }
+                    let seconds = parts[2].parse::<u64>()
+                        .map_err(|_| "Invalid seconds".to_string())?;
+                    Ok(Command::Expire {
+                        key: parts[1].to_string(),
+                        seconds,
+                    })
+                },
+                "TTL" => {
+                    if parts.len() != 2 {
+                        return Err("TTL command requires KEY".to_string());
+                    }
+                    Ok(Command::TTL {
+                        key: parts[1].to_string(),
+                    })
+                },
+                "PERSIST" => {
+                    if parts.len() != 2 {
+                        return Err("PERSIST command requires KEY".to_string());
+                    }
+                    Ok(Command::Persist {
+                        key: parts[1].to_string(),
+                    })
                 },
                 _ => Err(format!("Unknown command: {}", parts[0])),
             },

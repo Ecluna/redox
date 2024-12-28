@@ -86,10 +86,17 @@ impl Storage {
     /// # Returns
     /// * `Some(String)` - 找到的值
     /// * `None` - 键不存在或类型不匹配
-    pub async fn get_string(&self, key: &str) -> Option<String> {
+    async fn get_if_not_expired(&self, key: &str) -> Option<RedoxValue> {
+        if self.check_expired(key).await {
+            return None;
+        }
         let data = self.data.lock().await;
-        match data.get(key) {
-            Some(RedoxValue::String(s)) => Some(s.clone()),
+        data.get(key).cloned()
+    }
+
+    pub async fn get_string(&self, key: &str) -> Option<String> {
+        match self.get_if_not_expired(key).await {
+            Some(RedoxValue::String(s)) => Some(s),
             _ => None,
         }
     }
@@ -176,8 +183,7 @@ impl Storage {
     }
 
     pub async fn lrange(&self, key: &str, start: i64, stop: i64) -> Option<Vec<String>> {
-        let data = self.data.lock().await;
-        match data.get(key) {
+        match self.get_if_not_expired(key).await {
             Some(RedoxValue::List(list)) => {
                 let len = list.len() as i64;
                 let (start, stop) = normalize_range(start, stop, len);
@@ -228,8 +234,7 @@ impl Storage {
     }
 
     pub async fn smembers(&self, key: &str) -> Option<Vec<String>> {
-        let data = self.data.lock().await;
-        match data.get(key) {
+        match self.get_if_not_expired(key).await {
             Some(RedoxValue::Set(set)) => Some(set.iter().cloned().collect()),
             _ => None,
         }
@@ -277,8 +282,7 @@ impl Storage {
     }
 
     pub async fn hget(&self, key: &str, field: &str) -> Option<String> {
-        let data = self.data.lock().await;
-        match data.get(key) {
+        match self.get_if_not_expired(key).await {
             Some(RedoxValue::Hash(hash)) => hash.get(field).cloned(),
             _ => None,
         }
@@ -350,8 +354,7 @@ impl Storage {
     }
 
     pub async fn zrange(&self, key: &str, start: i64, stop: i64) -> Option<Vec<(String, f64)>> {
-        let data = self.data.lock().await;
-        match data.get(key) {
+        match self.get_if_not_expired(key).await {
             Some(RedoxValue::SortedSet(zset)) => {
                 let len = zset.len() as i64;
                 if len == 0 {
@@ -382,7 +385,7 @@ impl Storage {
         let data = self.data.lock().await;
         match data.get(key) {
             Some(RedoxValue::SortedSet(zset)) => {
-                // 先按分数排序，分数相同时按成员字典序排序
+                // 先按分数排序，分数同时按成员字典序排序
                 let mut members: Vec<(String, f64)> = zset.iter()
                     .map(|(k, v)| (k.clone(), *v))
                     .collect();
@@ -401,7 +404,6 @@ impl Storage {
     }
 
     /// 批量设置字符串值
-    #[allow(dead_code)]
     pub async fn mset(&self, pairs: Vec<(String, String)>) -> usize {
         let mut data = self.data.lock().await;
         let mut count = 0;
@@ -416,7 +418,6 @@ impl Storage {
     }
 
     /// 批量获取字符串值
-    #[allow(dead_code)]
     pub async fn mget(&self, keys: &[String]) -> Vec<Option<String>> {
         let data = self.data.lock().await;
         keys.iter().map(|key| {
@@ -428,7 +429,6 @@ impl Storage {
     }
 
     /// 设置键的过期时间（秒）
-    #[allow(dead_code)]
     pub async fn expire(&self, key: &str, seconds: u64) -> bool {
         let data = self.data.lock().await;
         if !data.contains_key(key) {
@@ -440,7 +440,6 @@ impl Storage {
             .unwrap()
             .as_secs() + seconds;
             
-        // 存储过期时间
         if let Some(p) = &self.persistence {
             p.set_expiry(key.to_string(), expires).await;
             self.mark_dirty();
@@ -463,7 +462,6 @@ impl Storage {
     }
 
     /// 清理过期的键
-    #[allow(dead_code)]
     pub async fn cleanup_expired(&self) {
         let mut data = self.data.lock().await;
         let mut expired_keys = Vec::new();
@@ -485,7 +483,6 @@ impl Storage {
     }
 
     /// 获取存储统计信息
-    #[allow(dead_code)]
     pub async fn info(&self) -> HashMap<String, String> {
         let data = self.data.lock().await;
         let mut info = HashMap::new();
@@ -535,6 +532,55 @@ impl Storage {
         }
         
         count
+    }
+
+    pub async fn ttl(&self, key: &str) -> Option<i64> {
+        if let Some(p) = &self.persistence {
+            if let Some(expires) = p.get_expiry(key).await {
+                let now = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs();
+                if now >= expires {
+                    return Some(-1);  // 已过期
+                }
+                return Some((expires - now) as i64);
+            }
+        }
+        None  // 键不存在或没有设置过期时间
+    }
+    
+    pub async fn persist(&self, key: &str) -> bool {
+        if let Some(p) = &self.persistence {
+            if p.remove_expiry(key).await {
+                self.mark_dirty();
+                return true;
+            }
+        }
+        false
+    }
+
+    // 在每次访问键时检查过期
+    async fn check_expired(&self, key: &str) -> bool {
+        if self.is_expired(key).await {
+            let mut data = self.data.lock().await;
+            data.remove(key);
+            self.mark_dirty();
+            true
+        } else {
+            false
+        }
+    }
+
+    // 添加定期清理任务
+    pub async fn start_cleanup_task(self) {
+        let interval = tokio::time::Duration::from_secs(10); // 每10秒清理一次
+        let mut interval = tokio::time::interval(interval);
+        
+        loop {
+            interval.tick().await;
+            self.cleanup_expired().await;
+        }
     }
 }
 

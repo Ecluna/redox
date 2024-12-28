@@ -179,4 +179,9 @@ impl Persistence {
     pub fn mark_dirty(&self) {
         self.dirty.store(true, Ordering::Relaxed);
     }
+
+    pub async fn remove_expiry(&self, key: &str) -> bool {
+        let mut expiry = self.expiry.lock().await;
+        expiry.remove(key).is_some()
+    }
 } 

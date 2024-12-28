@@ -42,6 +42,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     let storage = Storage::new(persistence);
+    
+    // 启动清理任务
+    let storage_clone = storage.clone();
+    tokio::spawn(async move {
+        storage_clone.start_cleanup_task().await;
+    });
+
     let server = Server::new(storage, config.password);
     
     let mut current_port = config.port;

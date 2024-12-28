@@ -9,7 +9,7 @@ use std::sync::Arc;
 /// 管理网络连接和存储实例
 pub struct Server {
     /// 存储实例，用于数据操作
-    storage: Storage,
+    storage: Arc<Storage>,
     /// 可选的认证密码
     password: Option<Arc<String>>,
 }
@@ -22,7 +22,7 @@ impl Server {
     /// * `password` - 可选的认证密码
     pub fn new(storage: Storage, password: Option<String>) -> Self {
         Server { 
-            storage,
+            storage: Arc::new(storage),
             password: password.map(Arc::new),
         }
     }
@@ -87,7 +87,7 @@ struct ConnectionState {
 /// * `Err` - 处理过程中的错误
 async fn handle_connection(
     mut socket: TcpStream,
-    storage: Storage,
+    storage: Arc<Storage>,
     password: Option<Arc<String>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (reader, mut writer) = socket.split();
@@ -244,7 +244,7 @@ async fn handle_connection(
             }
             Command::MSet(pairs) => {
                 let count = storage.mset(pairs).await;
-                Response::Integer(count)
+                Response::Integer(count as i64)
             }
             Command::MGet(keys) => {
                 let values = storage.mget(&keys).await;
@@ -256,7 +256,21 @@ async fn handle_connection(
             }
             Command::Del(keys) => {
                 let count = storage.del(&keys).await;
-                Response::Integer(count)
+                Response::Integer(count as i64)
+            }
+            Command::Expire { key, seconds } => {
+                let success = storage.expire(&key, seconds).await;
+                Response::Integer(if success { 1 } else { 0 })
+            }
+            Command::TTL { key } => {
+                match storage.ttl(&key).await {
+                    Some(ttl) => Response::Integer(ttl),
+                    None => Response::Integer(-2_i64),
+                }
+            }
+            Command::Persist { key } => {
+                let success = storage.persist(&key).await;
+                Response::Integer(if success { 1 } else { 0 })
             }
         };
 
