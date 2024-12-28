@@ -78,7 +78,7 @@ pub enum Command {
     Del(Vec<String>),  // DEL 命令支持删除多个键
 }
 
-/// 响应类型
+/// 响应类��
 #[derive(Debug)]
 pub enum Response {
     /// 操作成功，无返回值
@@ -405,11 +405,18 @@ impl Protocol {
                     format!("{}\n", pairs.join(" "))
                 },
                 RedoxValue::SortedSet(zset) => {
-                    let members: Vec<String> = zset
+                    let mut members: Vec<(&String, &f64)> = zset.iter().collect();
+                    // 按分数升序排序，分数相同时按成员字典序排序
+                    members.sort_by(|a, b| {
+                        a.1.partial_cmp(b.1)
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                            .then(a.0.cmp(b.0))
+                    });
+                    let result: Vec<String> = members
                         .iter()
                         .map(|(member, score)| format!("{} {}", member, score))
                         .collect();
-                    format!("{}\n", members.join(" "))
+                    format!("{}\n", result.join(" "))
                 },
             },
             Response::Error(err) => format!("ERR {}\n", err),

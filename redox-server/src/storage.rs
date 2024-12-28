@@ -304,7 +304,7 @@ impl Storage {
         }
     }
 
-    // 有序集���操作
+    // 有序集合操作
     /// 向有序集合添加成员
     /// 
     /// # Arguments
@@ -358,7 +358,7 @@ impl Storage {
                     return Some(vec![]);
                 }
                 
-                // 先按分数排序，分数相同时按成员字典序排序
+                // 按分数升序排序
                 let mut members: Vec<(String, f64)> = zset.iter()
                     .map(|(k, v)| (k.clone(), *v))
                     .collect();
@@ -440,7 +440,7 @@ impl Storage {
             .unwrap()
             .as_secs() + seconds;
             
-        // ���储过期时间
+        // 存储过期时间
         if let Some(p) = &self.persistence {
             p.set_expiry(key.to_string(), expires).await;
             self.mark_dirty();
