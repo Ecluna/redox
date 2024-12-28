@@ -266,10 +266,4 @@ async fn handle_connection(
     }
 
     Ok(())
-}
-
-async fn write_response(socket: &mut TcpStream, response: &Response) -> io::Result<()> {
-    let response_str = Protocol::encode_response(response);
-    socket.write_all(response_str.as_bytes()).await?;
-    Ok(())
 } 
